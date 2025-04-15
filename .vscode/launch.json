@@ -1,0 +1,34 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "LLDB launch",
+            "cwd": "${workspaceFolder}/.build",
+            "program": "${workspaceFolder}/.build/bin/${input:target}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "LLDB launch (with args)",
+            "cwd": "${workspaceFolder}/.build",
+            "program": "${workspaceFolder}/.build/bin/${input:target}",
+            "args": ["${input:args}"]
+        }
+    ],
+    "inputs": [
+        {
+            "id": "target",
+            "description": "select executable",
+            "type": "pickString",
+            "options": [
+            ]
+        },
+        {
+            "id": "args",
+            "description": "argumets to use",
+            "type": "promptString",
+        }
+    ]
+}

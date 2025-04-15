@@ -1,0 +1,10 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# find_package for all dependencies including private ones
+# include targets.cmake of other installed private dependencies
+# include(${CMAKE_CURRENT_LIST_DIR}/@CMAKE_PROJECT_NAME@-${additional-targets}-targets.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/@CMAKE_PROJECT_NAME@-targets.cmake)
+
+check_required_components(@CMAKE_PROJECT_NAME@)
