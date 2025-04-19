@@ -1,6 +1,9 @@
 #include <nil/clix.hpp>
 #include <nil/clix/options.hpp>
 
+#include <nil/xalt/checks.hpp>
+#include <nil/xalt/literal.hpp>
+#include <nil/xalt/tlist.hpp>
 #include <nil/xlua.hpp>
 
 #include <iostream>
@@ -17,47 +20,64 @@ int run_from_file(std::string_view path)
     return 0;
 }
 
+struct Person
+{
+    std::string name = "default_name";
+    int age = 0;
+    std::string job = "default_job";
+    std::string city = "default_city";
+};
+
+template <>
+struct nil::xlua::Type<Person>
+{
+    using Constructors = nil::xlua::List<                                  //
+        nil::xlua::Constructor<>,                                          //
+        nil::xlua::Constructor<std::string, int, std::string, std::string> //
+        >;
+
+    using Props = nil::xlua::List<              //
+        nil::xlua::Prop<"name", &Person::name>, //
+        nil::xlua::Prop<"age", &Person::age>,   //
+        nil::xlua::Prop<"job", &Person::job>,   //
+        nil::xlua::Prop<"city", &Person::city>  //
+        >;
+};
+
 int run_string()
 {
     auto state = nil::xlua::State();
+    state.add_type<Person>("Person");
 
     state.run(R"(
-        c = 100
-        c_fun = nil
-        function call()
-            if c_fun ~= nil then 
-                print("["..c_fun(1.0, 2.0).."]")
-                c_fun = nil
-                return false
-            end
-            return true
+        function call(callable)
+            return callable(2.0, 2.0)
         end
-        function add(a, b)
-            return c + a + b
-        end
-        function sub(a, b)
-            print("old sub")
-            sub = function(a, b)
-                print("new sub")
-                return c + a + b
+
+        function call_2()
+            -- Create a table
+            local person = Person()
+
+            -- Access table values
+            print("Name:", person.name)
+            print("Age:", person.age)
+            print("Job:", person["job"])
+
+            -- Add a new key-value pair
+            person.city = "New York"
+            print("City:", person.city)
+
+            -- Iterate through the table
+            for key, value in pairs(person) do
+                print(key .. ": " .. tostring(value))
             end
-            return c - (a - b)
         end
     )");
 
-    state.set("c_fun", [](double value1, double value2) { return value1 * value2 * 2; });
+    // auto callable = state["call"].as<bool(std::function<bool(double, double)>)>();
+    // std::cout << callable([](double a, double b) { return a == b; }) << std::endl;
 
-    std::cout << state["call"].as<bool()>()() << std::endl;
-    std::cout << state["call"].as<bool()>()() << std::endl;
-
-    std::cout << "-----------\n";
-    const auto add = state["add"].as<std::function<double(double, double)>>();
-    const auto sub = state["sub"].as<double(double, double)>();
-    std::cout << state["c"].as<double>() << ":" << add(10.0, 2.0) << std::endl;
-    std::cout << state["c"].as<double>() << ":" << sub(12.0, 6.0) << std::endl;
-    std::cout << state["c"].as<double>() << ":" << add(12.0, 6.0) << std::endl;
-    std::cout << state["c"].as<double>() << ":" << sub(10.0, 2.0) << std::endl;
-    std::cout << "-----------\n";
+    state["call_2"].as<void()>()();
 
     state.gc();
     return 0;

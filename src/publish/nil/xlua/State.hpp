@@ -4,18 +4,42 @@
 #include "Var.hpp"
 #include "error.hpp"
 
+#include <lauxlib.h>
+#include <lua.h>
 #include <nil/xalt/fn_sign.hpp>
+#include <nil/xalt/literal.hpp>
+#include <nil/xalt/str_name.hpp>
 #include <nil/xalt/tlist.hpp>
+#include <utility>
 
 extern "C"
 {
 #include "lualib.h"
 }
 
+#include <iostream>
 #include <string_view>
 
 namespace nil::xlua
 {
+    template <typename... Args>
+    struct Constructor
+    {
+    };
+
+    template <nil::xalt::literal name, auto ptr_to_member>
+    struct Prop
+    {
+    };
+
+    template <typename... Types>
+    struct List
+    {
+    };
+
+    template <typename T>
+    struct Type;
+
     class State final
     {
     public:
@@ -72,11 +96,8 @@ namespace nil::xlua
             requires(std::is_same_v<typename nil::xalt::fn_sign<MemFun>::class_type, C>)
         void set(std::string_view name, MemFun fun, C* c)
         {
-            auto fn = wrap<typename nil::xalt::fn_sign<MemFun>::return_type>(
-                fun,
-                c,
-                typename nil::xalt::fn_sign<MemFun>::arg_types()
-            );
+            auto fn = [c, fun]<typename... Args>(Args... args)
+            { return (c->*fun)(args...); }(typename nil::xalt::fn_sign<MemFun>::arg_types());
             TypeDef<decltype(fn)>::push(state, std::move(fn));
             lua_setglobal(state, name.data());
         }
@@ -91,13 +112,138 @@ namespace nil::xlua
             return lua_gettop(state);
         }
 
+        template <typename T>
+        void add_type(std::string_view name)
+        {
+            lua_register(
+                state,
+                name.data(),
+                [](lua_State* s)
+                {
+                    type_construct<T>(s, typename Type<T>::Constructors());
+                    return 1;
+                } //
+            );
+
+            luaL_newmetatable(state, nil::xalt::str_name_type_v<T>);
+            lua_pushcfunction(state, &TypeDefCommon<T>::del);
+            lua_setfield(state, -2, "__gc");
+            lua_pushcfunction(
+                state,
+                [](lua_State* s)
+                {
+                    T* data = static_cast<T*>(luaL_checkudata(s, 1, nil::xalt::str_name_type_v<T>));
+                    type_get_prop(data, luaL_checkstring(s, 2), s, typename Type<T>::Props());
+                    return 1;
+                }
+            );
+            lua_setfield(state, -2, "__index");
+            lua_pushcfunction(
+                state,
+                [](lua_State* s)
+                {
+                    T* data = static_cast<T*>(luaL_checkudata(s, 1, nil::xalt::str_name_type_v<T>));
+                    type_set_prop(data, luaL_checkstring(s, 2), s, typename Type<T>::Props());
+                    return 1;
+                }
+            );
+            lua_setfield(state, -2, "__newindex");
+            lua_pushcfunction(
+                state,
+                [](lua_State* s)
+                {
+                    T* data = static_cast<T*>(luaL_checkudata(s, 1, nil::xalt::str_name_type_v<T>));
+                    type_pair_prop(data, luaL_checkstring(s, 2), s, typename Type<T>::Props());
+                    return 1;
+                }
+            );
+            lua_setfield(state, -2, "__pairs");
+        }
+
     private:
         lua_State* state;
 
-        template <typename R, typename C, typename MemFun, typename... A>
-        static auto wrap(MemFun fun, C* c, nil::xalt::tlist_types<A...> /* arg types */)
+        template <typename T, nil::xalt::literal l, auto r, typename... TRest>
+        static void type_get_prop(
+            T* data,
+            const char* key,
+            lua_State* s,
+            List<Prop<l, r>, TRest...> /* props */
+        )
         {
-            return [c, fun](A... args) { return (c->*fun)(args...); };
+            if (std::string_view(nil::xalt::literal_v<l>) == key)
+            {
+                TypeDef<std::remove_cvref_t<decltype(data->*r)>>::push(s, data->*r);
+                return;
+            }
+            if constexpr (sizeof...(TRest) == 0)
+            {
+                lua_pushnil(s);
+            }
+            else
+            {
+                type_get_prop(data, key, s, List<TRest...>());
+            }
+        }
+
+        template <typename T, nil::xalt::literal l, auto r, typename... TRest>
+        static void type_set_prop(
+            T* data,
+            const char* key,
+            lua_State* s,
+            List<Prop<l, r>, TRest...> /* props */
+        )
+        {
+            std::cout << std::string_view(nil::xalt::literal_v<l>) << " == " << key << std::endl;
+            if (std::string_view(nil::xalt::literal_v<l>) == key)
+            {
+                data->*r = TypeDef<std::remove_cvref_t<decltype(data->*r)>>::value(s, 3);
+                return;
+            }
+            if constexpr (sizeof...(TRest) == 0)
+            {
+                throw_error(s);
+            }
+            else
+            {
+                type_set_prop(data, key, s, List<TRest...>());
+            }
+        }
+
+        template <typename T, typename... CType, typename... TRest>
+        static void type_construct(
+            lua_State* s,
+            List<Constructor<CType...>, TRest...> /* constructors */
+        )
+        {
+            if (sizeof...(CType) == lua_gettop(s))
+            {
+                const auto done = [s]<std::size_t... I>(std::index_sequence<I...>)
+                {
+                    const auto match
+                        = (true && ... && TypeDef<std::remove_cvref_t<CType>>::check(s, I + 1));
+                    if (match)
+                    {
+                        auto* data = static_cast<T*>(lua_newuserdata(s, sizeof(T)));
+                        new (data) T(TypeDef<std::remove_cvref_t<CType>>::value(s, I + 1)...);
+                        luaL_getmetatable(s, nil::xalt::str_name_type_v<T>);
+                        lua_setmetatable(s, -2);
+                    }
+                    return match;
+                }(std::make_index_sequence<sizeof...(CType)>());
+                if (done)
+                {
+                    return;
+                }
+            }
+            if constexpr (sizeof...(TRest) == 0)
+            {
+                throw_error(s);
+            }
+            else
+            {
+                type_construct<T>(s, List<TRest...>());
+            }
         }
     };
 }

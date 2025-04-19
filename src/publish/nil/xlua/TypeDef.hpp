@@ -12,8 +12,8 @@ extern "C"
 #include "lua.h"
 }
 
-#include <functional>
 #include <memory>
+#include <optional>
 
 namespace nil::xlua
 {
@@ -41,11 +41,14 @@ namespace nil::xlua
     template <>
     struct TypeDef<bool> final
     {
-        using type = bool;
+        static bool check(lua_State* state, int index)
+        {
+            return lua_isboolean(state, index);
+        }
 
         static bool value(lua_State* state, int index)
         {
-            if (!lua_isboolean(state, index))
+            if (!check(state, index))
             {
                 throw_error(state);
             }
@@ -57,7 +60,7 @@ namespace nil::xlua
             lua_pushboolean(state, value ? 1 : 0);
         }
 
-        static type pull(const std::shared_ptr<Ref>& ref)
+        static auto pull(const std::shared_ptr<Ref>& ref)
         {
             return TypeDefCommon<bool>::pull(ref);
         }
@@ -67,23 +70,26 @@ namespace nil::xlua
         requires(std::is_floating_point_v<T>)
     struct TypeDef<T> final
     {
-        using type = T;
-
-        static type value(lua_State* state, int index)
+        static bool check(lua_State* state, int index)
         {
-            if (lua_isnumber(state, index) == 0)
+            return lua_isnumber(state, index) != 0;
+        }
+
+        static T value(lua_State* state, int index)
+        {
+            if (check(state, index))
             {
                 throw_error(state);
             }
-            return type(lua_tonumber(state, index));
+            return T(lua_tonumber(state, index));
         }
 
-        static void push(lua_State* state, type value)
+        static void push(lua_State* state, T value)
         {
             lua_pushnumber(state, value);
         }
 
-        static type pull(const std::shared_ptr<Ref>& ref)
+        static auto pull(const std::shared_ptr<Ref>& ref)
         {
             return TypeDefCommon<T>::pull(ref);
         }
@@ -93,23 +99,26 @@ namespace nil::xlua
         requires(std::is_integral_v<T>)
     struct TypeDef<T> final
     {
-        using type = T;
-
-        static type value(lua_State* state, int index)
+        static bool check(lua_State* state, int index)
         {
-            if (lua_isinteger(state, index) == 0)
+            return lua_isinteger(state, index) != 0;
+        }
+
+        static T value(lua_State* state, int index)
+        {
+            if (!check(state, index))
             {
                 throw_error(state);
             }
-            return type(lua_tointeger(state, index));
+            return T(lua_tointeger(state, index));
         }
 
-        static void push(lua_State* state, type value)
+        static void push(lua_State* state, T value)
         {
             lua_pushinteger(state, value);
         }
 
-        static type pull(const std::shared_ptr<Ref>& ref)
+        static auto pull(const std::shared_ptr<Ref>& ref)
         {
             return TypeDefCommon<T>::pull(ref);
         }
@@ -119,34 +128,72 @@ namespace nil::xlua
         requires(std::is_same_v<std::string, T> || std::is_same_v<std::string_view, T>)
     struct TypeDef<T> final
     {
-        using type = T;
+        static bool check(lua_State* state, int index)
+        {
+            return lua_isstring(state, index) != 0;
+        }
 
         static auto value(lua_State* state, int index)
         {
-            if (lua_isstring(state, index) == 0)
+            if (!check(state, index))
             {
                 throw_error(state);
             }
             return std::string(lua_tostring(state, index));
         }
 
-        static void push(lua_State* state, const type& value)
+        static void push(lua_State* state, const T& value)
         {
             lua_pushlstring(state, value.data(), value.size());
         }
 
-        static T pull(const std::shared_ptr<Ref>& ref)
+        static auto pull(const std::shared_ptr<Ref>& ref)
         {
             return TypeDefCommon<T>::pull(ref);
+        }
+    };
+
+    template <typename T>
+    struct TypeDef<std::optional<T>> final
+    {
+        static bool check(lua_State* state, int index)
+        {
+            return (lua_isnil(state, index) != 0) || TypeDef<T>::check(state, index);
+        }
+
+        static auto value(lua_State* state, int index)
+        {
+            if (lua_isnil(state, index) != 0)
+            {
+                return std::optional<T>();
+            }
+            return std::make_optional(TypeDef<T>::value(state, index));
+        }
+
+        static void push(lua_State* state, const std::optional<T>& value)
+        {
+            if (value.has_value())
+            {
+                TypeDef<T>::push(state, value.value());
+            }
+            lua_pushnil(state);
+        }
+
+        static auto pull(const std::shared_ptr<Ref>& ref)
+        {
+            auto* state = ref->push();
+            if (lua_isnil(state, -1))
+            {
+                return std::optional<T>();
+            }
+            return std::make_optional(TypeDef<T>::pull(ref));
         }
     };
 
     template <typename R, typename... Args>
     struct TypeDef<R(Args...)> final
     {
-        using type = std::function<R(Args...)>;
-
-        static type pull(const std::shared_ptr<Ref>& ref)
+        static auto pull(const std::shared_ptr<Ref>& ref)
         {
             return [ref](Args... args)
             {
@@ -156,7 +203,7 @@ namespace nil::xlua
                     throw_error(state);
                 }
 
-                (TypeDef<Args>::push(state, args), ...);
+                (TypeDef<std::remove_cvref_t<Args>>::push(state, std::move(args)), ...);
 
                 constexpr auto return_size = std::is_same_v<R, void> ? 0 : 1;
                 if (lua_pcall(state, sizeof...(Args), return_size, 0) != LUA_OK)
@@ -178,14 +225,6 @@ namespace nil::xlua
         requires requires() { &T::operator(); }
     struct TypeDef<T> final
     {
-    private:
-        using fn_sign = nil::xalt::fn_sign<T>;
-        using return_type = fn_sign::return_type;
-        using arg_types = fn_sign::arg_types;
-
-    public:
-        using type = T;
-
         static void push(lua_State* state, T callable)
         {
             auto* data = static_cast<T*>(lua_newuserdata(state, sizeof(T)));
@@ -196,51 +235,94 @@ namespace nil::xlua
             lua_setfield(state, -2, "__gc");
             lua_setmetatable(state, -2);
 
+            using arg_types = typename nil::xalt::fn_sign<T>::arg_types;
             lua_pushcclosure(
                 state,
-                [](lua_State* s) -> int
+                []<typename... Args, std::size_t... I>(
+                    nil::xalt::tlist_types<Args...> /* types */,
+                    std::index_sequence<I...> /* indices */
+                )
                 {
-                    auto* user_data = static_cast<T*>(lua_touserdata(s, lua_upvalueindex(1)));
-                    constexpr auto arg_indices = std::make_index_sequence<arg_types::size>();
-                    return call(s, user_data, arg_types(), arg_indices);
-                },
+                    return [](lua_State* s) -> int
+                    {
+                        auto* user_data = static_cast<T*>(lua_touserdata(s, lua_upvalueindex(1)));
+                        using return_type = typename nil::xalt::fn_sign<T>::return_type;
+                        using type_def = TypeDef<return_type>;
+                        if constexpr (!std::is_same_v<void, return_type>)
+                        {
+                            type_def::push(
+                                s,
+                                (*user_data)(TypeDef<std::remove_cvref_t<Args>>::value(s, I + 1)...)
+                            );
+                            return 1;
+                        }
+                        else
+                        {
+                            (*user_data)(TypeDef<std::remove_cvref_t<Args>>::value(s, I + 1)...);
+                            return 0;
+                        }
+                    };
+                }(arg_types(), std::make_index_sequence<arg_types::size>()),
                 1
             );
         }
 
-        static type pull(const std::shared_ptr<Ref>& ref)
+        static auto pull(const std::shared_ptr<Ref>& ref)
         {
-            using fn_ptr_type = decltype(fn(std::declval<typename fn_sign::arg_types>()));
-            using fn_type = std::remove_pointer_t<fn_ptr_type>;
-            return TypeDef<fn_type>::pull(ref);
+            using free_type = typename nil::xalt::fn_sign<T>::free_type;
+            return TypeDef<free_type>::pull(ref);
+        }
+    };
+
+    template <typename T>
+    struct TypeDef
+    {
+        static void push(lua_State* state, T callable)
+        {
+            auto* data = static_cast<T*>(lua_newuserdata(state, sizeof(T)));
+            new (data) T(std::move(callable));
+
+            lua_newtable(state);
+            lua_pushcfunction(state, &TypeDefCommon<T>::del);
+            lua_setfield(state, -2, "__gc");
+            lua_setmetatable(state, -2);
+
+            using arg_types = typename nil::xalt::fn_sign<T>::arg_types;
+            lua_pushcclosure(
+                state,
+                []<typename... Args, std::size_t... I>(
+                    nil::xalt::tlist_types<Args...> /* types */,
+                    std::index_sequence<I...> /* indices */
+                )
+                {
+                    return [](lua_State* s) -> int
+                    {
+                        auto* user_data = static_cast<T*>(lua_touserdata(s, lua_upvalueindex(1)));
+                        using return_type = typename nil::xalt::fn_sign<T>::return_type;
+                        using type_def = TypeDef<return_type>;
+                        if constexpr (!std::is_same_v<void, return_type>)
+                        {
+                            type_def::push(
+                                s,
+                                (*user_data)(TypeDef<std::remove_cvref_t<Args>>::value(s, I + 1)...)
+                            );
+                            return 1;
+                        }
+                        else
+                        {
+                            (*user_data)(TypeDef<std::remove_cvref_t<Args>>::value(s, I + 1)...);
+                            return 0;
+                        }
+                    };
+                }(arg_types(), std::make_index_sequence<arg_types::size>()),
+                1
+            );
         }
 
-    private:
-        template <typename... Args, std::size_t... I>
-        static int call(
-            lua_State* state,
-            T* user_data,
-            nil::xalt::tlist_types<Args...> /* types */,
-            std::index_sequence<I...> /* indices */
-        )
+        static auto pull(const std::shared_ptr<Ref>& ref)
         {
-            if constexpr (!std::is_same_v<void, return_type>)
-            {
-                TypeDef<return_type>::push(
-                    state,
-                    (*user_data)(TypeDef<Args>::value(state, I + 1)...)
-                );
-                return 1;
-            }
-            else
-            {
-                (*user_data)(TypeDef<Args>::value(state, I + 1)...);
-                return 0;
-            }
+            using free_type = typename nil::xalt::fn_sign<T>::free_type;
+            return TypeDef<free_type>::pull(ref);
         }
-
-        template <typename... Args>
-        static auto fn(nil::xalt::tlist_types<Args...> /* types */) ->
-            typename nil::xalt::fn_sign<T>::return_type (*)(Args...);
     };
 }
