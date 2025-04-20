@@ -60,7 +60,7 @@ namespace nil::xlua
 
         static auto& pull(const std::shared_ptr<Ref>& ref)
         {
-            return TypeDefCommon<Var>::pull_ref(ref);
+            return TypeDefCommon<Var>::pull(ref);
         }
     };
 }

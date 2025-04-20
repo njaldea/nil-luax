@@ -6,16 +6,16 @@
 #include <nil/xalt/fn_sign.hpp>
 #include <nil/xalt/str_name.hpp>
 #include <nil/xalt/tlist.hpp>
-#include <type_traits>
-#include <utility>
 
 extern "C"
 {
-#include "lua.h"
+#include <lua.h>
 }
 
 #include <functional>
 #include <memory>
+#include <type_traits>
+#include <utility>
 
 /**
  * check - only used to check constructor arg type
@@ -45,20 +45,22 @@ namespace nil::xlua
     template <typename T>
     struct TypeDefCommon final
     {
-        static auto pull_value(const std::shared_ptr<Ref>& ref)
+        static decltype(auto) pull(const std::shared_ptr<Ref>& ref)
         {
-            auto* state = ref->push();
-            auto v = TypeDef<T>::value(state, -1);
-            lua_pop(state, -1);
-            return v;
-        }
-
-        static auto& pull_ref(const std::shared_ptr<Ref>& ref)
-        {
-            auto* state = ref->push();
-            auto* ptr = static_cast<T*>(lua_touserdata(state, -1));
-            lua_pop(state, -1);
-            return *ptr;
+            if constexpr (is_value_type<std::decay_t<T>>)
+            {
+                auto* state = ref->push();
+                auto v = TypeDef<T>::value(state, -1);
+                lua_pop(state, -1);
+                return v;
+            }
+            else
+            {
+                auto* state = ref->push();
+                auto* ptr = static_cast<T*>(lua_touserdata(state, -1));
+                lua_pop(state, -1);
+                return *ptr;
+            }
         }
 
         static auto push_closure(lua_State* state, T context)
@@ -71,31 +73,34 @@ namespace nil::xlua
             lua_setfield(state, -2, "__gc");
             lua_setmetatable(state, -2);
 
-            using fn_sign = nil::xalt::fn_sign<T>;
             lua_pushcclosure(
                 state,
-                []<typename... Args,
-                   std::size_t... I>(nil::xalt::tlist_types<Args...>, std::index_sequence<I...>)
+                []<typename... Args, std::size_t... I>(
+                    nil::xalt::tlist_types<Args...> /* arg types */,
+                    std::index_sequence<I...> /* arg indices */
+                )
                 {
                     return [](lua_State* s)
                     {
                         auto* user_data = static_cast<T*>(lua_touserdata(s, lua_upvalueindex(1)));
-                        using return_type = typename fn_sign::return_type;
+                        using return_type = typename nil::xalt::fn_sign<T>::return_type;
                         if constexpr (!std::is_same_v<void, return_type>)
                         {
                             TypeDef<return_type>::push(
                                 s,
-                                (*user_data)(TypeDef<std::remove_cvref_t<Args>>::value(s, I + 1)...)
+                                (*user_data)(TypeDef<Args>::value(s, I + 1)...)
                             );
                             return 1;
                         }
                         else
                         {
-                            (*user_data)(TypeDef<std::remove_cvref_t<Args>>::value(s, I + 1)...);
+                            (*user_data)(TypeDef<Args>::value(s, I + 1)...);
                             return 0;
                         }
                     };
-                }(fn_sign::arg_types(), std::make_index_sequence<fn_sign::arg_types::size>())
+                }(typename nil::xalt::fn_sign<T>::arg_types(),
+                  std::make_index_sequence<nil::xalt::fn_sign<T>::arg_types::size>()),
+                1
             );
         }
 
@@ -130,7 +135,7 @@ namespace nil::xlua
 
         static auto pull(const std::shared_ptr<Ref>& ref)
         {
-            return TypeDefCommon<bool>::pull_value(ref);
+            return TypeDefCommon<bool>::pull(ref);
         }
     };
 
@@ -159,7 +164,7 @@ namespace nil::xlua
 
         static auto pull(const std::shared_ptr<Ref>& ref)
         {
-            return TypeDefCommon<T>::pull_value(ref);
+            return TypeDefCommon<T>::pull(ref);
         }
     };
 
@@ -188,7 +193,7 @@ namespace nil::xlua
 
         static auto pull(const std::shared_ptr<Ref>& ref)
         {
-            return TypeDefCommon<T>::pull_value(ref);
+            return TypeDefCommon<T>::pull(ref);
         }
     };
 
@@ -217,7 +222,7 @@ namespace nil::xlua
 
         static auto pull(const std::shared_ptr<Ref>& ref)
         {
-            return TypeDefCommon<T>::pull_value(ref);
+            return TypeDefCommon<T>::pull(ref);
         }
     };
 
@@ -308,8 +313,6 @@ namespace nil::xlua
     template <typename R, typename... Args>
     struct TypeDef<R(Args...)> final
     {
-        static_assert(!std::is_reference_v<R>, "return type can't be reference");
-
         // no push since users should not push this
         static auto pull(const std::shared_ptr<Ref>& ref)
         {
@@ -318,7 +321,7 @@ namespace nil::xlua
     };
 
     template <is_function_type T>
-        requires(!std::is_reference_v<typename nil::xalt::fn_sign<T>::return_type>)
+        requires(!is_value_type<std::decay_t<T>>) && requires() { &T::operator(); }
     struct TypeDef<T> final
     {
         static void push(lua_State* state, T callable)
@@ -328,36 +331,15 @@ namespace nil::xlua
 
         static auto& pull(const std::shared_ptr<Ref>& ref)
         {
-            return TypeDefCommon<T>::pull_ref(ref);
+            return TypeDefCommon<T>::pull(ref);
         }
-    };
-
-    template <typename R, typename... Args>
-    struct TypeDef<R&(Args...)> final
-    {
-        static_assert(!std::is_reference_v<R&>, "return type can't be reference");
-    };
-
-    template <typename R, typename... Args>
-    struct TypeDef<std::function<R&(Args...)>> final
-    {
-        static_assert(!std::is_reference_v<R&>, "return type can't be reference");
-    };
-
-    template <is_function_type T>
-        requires(std::is_reference_v<typename nil::xalt::fn_sign<T>::return_type>)
-    struct TypeDef<T> final
-    {
-        static_assert(
-            !std::is_reference_v<typename nil::xalt::fn_sign<T>::return_type>,
-            "return type can't be reference"
-        );
     };
 
     // starting here are ref types
 
     template <typename T>
         requires(!is_value_type<std::decay_t<T>>)
+        && (!nil::xalt::fn_sign<std::remove_cvref_t<T>>::is_fn)
     struct TypeDef<T> final
     {
         using raw_type = std::remove_cvref_t<T>;
@@ -393,7 +375,7 @@ namespace nil::xlua
 
         static auto& pull(const std::shared_ptr<Ref>& ref)
         {
-            return TypeDefCommon<raw_type>::pull_ref(ref);
+            return TypeDefCommon<raw_type>::pull(ref);
         }
     };
 }

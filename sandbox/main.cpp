@@ -36,11 +36,11 @@ struct nil::xlua::Type<Person>
         nil::xlua::Constructor<std::string, int, std::string, std::string> //
         >;
 
-    using Props = nil::xlua::List<              //
-        nil::xlua::Prop<"name", &Person::name>, //
-        nil::xlua::Prop<"age", &Person::age>,   //
-        nil::xlua::Prop<"job", &Person::job>,   //
-        nil::xlua::Prop<"city", &Person::city>  //
+    using Props = nil::xlua::List<                  //
+        nil::xlua::Property<"name", &Person::name>, //
+        nil::xlua::Property<"age", &Person::age>,   //
+        nil::xlua::Property<"job", &Person::job>,   //
+        nil::xlua::Property<"city", &Person::city>  //
         >;
 };
 
@@ -78,6 +78,11 @@ int run_string()
     )");
 
     auto call = state["call_2"].as<nil::xlua::Var()>();
+
+    auto ff = +[]() { std::cout << "hello world\n"; };
+    state.set("hello", ff);
+
+    state["hello"].as<void()>()();
 
     auto& person = state["person"].as<Person&>();
     std::cout << &person << std::endl;

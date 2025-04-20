@@ -2,7 +2,7 @@
 
 extern "C"
 {
-#include "lauxlib.h"
+#include <lauxlib.h>
 }
 
 namespace nil::xlua

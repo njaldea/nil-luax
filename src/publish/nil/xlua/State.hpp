@@ -4,20 +4,21 @@
 #include "Var.hpp"
 #include "error.hpp"
 
-#include <lauxlib.h>
-#include <lua.h>
 #include <nil/xalt/fn_sign.hpp>
 #include <nil/xalt/literal.hpp>
 #include <nil/xalt/str_name.hpp>
 #include <nil/xalt/tlist.hpp>
-#include <utility>
 
 extern "C"
 {
-#include "lualib.h"
+#include <lauxlib.h>
+#include <lua.h>
+#include <lualib.h>
 }
 
 #include <string_view>
+#include <type_traits>
+#include <utility>
 
 namespace nil::xlua
 {
@@ -27,7 +28,7 @@ namespace nil::xlua
     };
 
     template <nil::xalt::literal name, auto ptr_to_member>
-    struct Prop
+    struct Property
     {
     };
 
@@ -92,13 +93,22 @@ namespace nil::xlua
         }
 
         template <typename C, typename MemFun>
-            requires(std::is_same_v<typename nil::xalt::fn_sign<MemFun>::class_type, C>)
+            requires(std::is_pointer_v<MemFun> && std::is_same_v<typename nil::xalt::fn_sign<MemFun>::class_type, C>)
         void set(std::string_view name, MemFun fun, C* c)
         {
-            auto fn = [c, fun]<typename... Args>(Args... args)
-            { return (c->*fun)(args...); }(typename nil::xalt::fn_sign<MemFun>::arg_types());
-            TypeDef<decltype(fn)>::push(state, std::move(fn));
-            lua_setglobal(state, name.data());
+            set(name,
+                [c, fun]<typename... Args>(Args... args)
+                { return (c->*fun)(args...); }(typename nil::xalt::fn_sign<MemFun>::arg_types()));
+        }
+
+        template <typename FreeFun>
+            requires(std::is_pointer_v<FreeFun> && std::is_same_v<typename nil::xalt::fn_sign<FreeFun>::class_type, void>)
+        void set(std::string_view name, FreeFun fun)
+        {
+            auto lambda = [fun]<typename... Args>(nil::xalt::tlist_types<Args...> /* arg types */) {
+                return [fun](Args... args) { return fun(args...); };
+            }(typename nil::xalt::fn_sign<FreeFun>::arg_types());
+            set(name, lambda);
         }
 
         void gc()
@@ -167,7 +177,7 @@ namespace nil::xlua
             T* data,
             const char* key,
             lua_State* s,
-            List<Prop<l, r>, TRest...> /* props */
+            List<Property<l, r>, TRest...> /* props */
         )
         {
             if (std::string_view(nil::xalt::literal_v<l>) == key)
@@ -190,7 +200,7 @@ namespace nil::xlua
             T* data,
             const char* key,
             lua_State* s,
-            List<Prop<l, r>, TRest...> /* props */
+            List<Property<l, r>, TRest...> /* props */
         )
         {
             if (std::string_view(nil::xalt::literal_v<l>) == key)
