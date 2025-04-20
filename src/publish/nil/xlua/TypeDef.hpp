@@ -36,6 +36,10 @@ namespace nil::xlua
         || std::is_same_v<std::string_view, T>;
 
     template <typename T>
+    concept is_function_type //
+        = requires() { &T::operator(); };
+
+    template <typename T>
     struct TypeDef;
 
     template <typename T>
@@ -219,7 +223,7 @@ namespace nil::xlua
 
     template <typename T>
         requires(is_value_type<std::decay_t<T>>)
-    struct TypeDef<T&>
+    struct TypeDef<T&> final
     {
         using raw_type = std::remove_cvref_t<T>;
 
@@ -299,9 +303,13 @@ namespace nil::xlua
         }
     };
 
+    // this is only usable for Var
+    // not argument/return of a function
     template <typename R, typename... Args>
     struct TypeDef<R(Args...)> final
     {
+        static_assert(!std::is_reference_v<R>, "return type can't be reference");
+
         // no push since users should not push this
         static auto pull(const std::shared_ptr<Ref>& ref)
         {
@@ -309,8 +317,8 @@ namespace nil::xlua
         }
     };
 
-    template <typename T>
-        requires requires() { &T::operator(); }
+    template <is_function_type T>
+        requires(!std::is_reference_v<typename nil::xalt::fn_sign<T>::return_type>)
     struct TypeDef<T> final
     {
         static void push(lua_State* state, T callable)
@@ -324,11 +332,33 @@ namespace nil::xlua
         }
     };
 
+    template <typename R, typename... Args>
+    struct TypeDef<R&(Args...)> final
+    {
+        static_assert(!std::is_reference_v<R&>, "return type can't be reference");
+    };
+
+    template <typename R, typename... Args>
+    struct TypeDef<std::function<R&(Args...)>> final
+    {
+        static_assert(!std::is_reference_v<R&>, "return type can't be reference");
+    };
+
+    template <is_function_type T>
+        requires(std::is_reference_v<typename nil::xalt::fn_sign<T>::return_type>)
+    struct TypeDef<T> final
+    {
+        static_assert(
+            !std::is_reference_v<typename nil::xalt::fn_sign<T>::return_type>,
+            "return type can't be reference"
+        );
+    };
+
     // starting here are ref types
 
     template <typename T>
         requires(!is_value_type<std::decay_t<T>>)
-    struct TypeDef<T>
+    struct TypeDef<T> final
     {
         using raw_type = std::remove_cvref_t<T>;
 
