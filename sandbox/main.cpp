@@ -26,6 +26,11 @@ struct Person
     int age = 0;
     std::string job = "default_job";
     std::string city = "default_city";
+
+    void do_it() const
+    {
+        std::cout << "do_it:" << name << ":" << age << ":" << job << ":" << city << std::endl;
+    }
 };
 
 template <>
@@ -36,11 +41,12 @@ struct nil::xlua::Type<Person>
         nil::xlua::Constructor<std::string, int, std::string, std::string> //
         >;
 
-    using Props = nil::xlua::List<                  //
+    using Members = nil::xlua::List<                //
         nil::xlua::Property<"name", &Person::name>, //
         nil::xlua::Property<"age", &Person::age>,   //
         nil::xlua::Property<"job", &Person::job>,   //
-        nil::xlua::Property<"city", &Person::city>  //
+        nil::xlua::Property<"city", &Person::city>, //
+        nil::xlua::Method<"do_it", &Person::do_it>  //
         >;
 };
 
@@ -73,6 +79,7 @@ int run_string()
             --     print(key .. ": " .. tostring(value))
             -- end
 
+            person:do_it()
             return person;
         end
     )");

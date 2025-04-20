@@ -36,10 +36,6 @@ namespace nil::xlua
         || std::is_same_v<std::string_view, T>;
 
     template <typename T>
-    concept is_function_type //
-        = requires() { &T::operator(); };
-
-    template <typename T>
     struct TypeDef;
 
     template <typename T>
@@ -73,35 +69,36 @@ namespace nil::xlua
             lua_setfield(state, -2, "__gc");
             lua_setmetatable(state, -2);
 
-            lua_pushcclosure(
-                state,
-                []<typename... Args, std::size_t... I>(
-                    nil::xalt::tlist_types<Args...> /* arg types */,
-                    std::index_sequence<I...> /* arg indices */
-                )
+            constexpr auto closure_maker //
+                = []<typename... Args, std::size_t... I>(
+                      nil::xalt::tlist_types<Args...> /* arg types */,
+                      std::index_sequence<I...> /* arg indices */
+                  )
+            {
+                return [](lua_State* s)
                 {
-                    return [](lua_State* s)
+                    auto* user_data = static_cast<T*>(lua_touserdata(s, lua_upvalueindex(1)));
+                    using return_type = typename nil::xalt::fn_sign<T>::return_type;
+                    if constexpr (!std::is_same_v<void, return_type>)
                     {
-                        auto* user_data = static_cast<T*>(lua_touserdata(s, lua_upvalueindex(1)));
-                        using return_type = typename nil::xalt::fn_sign<T>::return_type;
-                        if constexpr (!std::is_same_v<void, return_type>)
-                        {
-                            TypeDef<return_type>::push(
-                                s,
-                                (*user_data)(TypeDef<Args>::value(s, I + 1)...)
-                            );
-                            return 1;
-                        }
-                        else
-                        {
-                            (*user_data)(TypeDef<Args>::value(s, I + 1)...);
-                            return 0;
-                        }
-                    };
-                }(typename nil::xalt::fn_sign<T>::arg_types(),
-                  std::make_index_sequence<nil::xalt::fn_sign<T>::arg_types::size>()),
-                1
+                        TypeDef<return_type>::push(
+                            s,
+                            (*user_data)(TypeDef<Args>::value(s, I + 1)...)
+                        );
+                        return 1;
+                    }
+                    else
+                    {
+                        (*user_data)(TypeDef<Args>::value(s, I + 1)...);
+                        return 0;
+                    }
+                };
+            };
+            constexpr auto closure = closure_maker(
+                typename nil::xalt::fn_sign<T>::arg_types(),
+                std::make_index_sequence<nil::xalt::fn_sign<T>::arg_types::size>()
             );
+            lua_pushcclosure(state, closure, 1);
         }
 
         static int del(lua_State* state)
@@ -320,8 +317,7 @@ namespace nil::xlua
         }
     };
 
-    template <is_function_type T>
-        requires(!is_value_type<std::decay_t<T>>) && requires() { &T::operator(); }
+    template <nil::xalt::is_fn T>
     struct TypeDef<T> final
     {
         static void push(lua_State* state, T callable)
@@ -338,8 +334,7 @@ namespace nil::xlua
     // starting here are ref types
 
     template <typename T>
-        requires(!is_value_type<std::decay_t<T>>)
-        && (!nil::xalt::fn_sign<std::remove_cvref_t<T>>::is_fn)
+        requires(!is_value_type<std::decay_t<T>>) && (!nil::xalt::is_fn<std::remove_cvref_t<T>>)
     struct TypeDef<T> final
     {
         using raw_type = std::remove_cvref_t<T>;
