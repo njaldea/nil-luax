@@ -50,13 +50,14 @@ int run_string()
     state.add_type<Person>("Person");
 
     state.run(R"(
+        person = Person()
+
         function call(callable)
             return callable(2.0, 2.0)
         end
 
         function call_2()
-            -- Create a table
-            local person = Person()
+            print(person)
 
             -- Access table values
             print("Name:", person.name)
@@ -68,16 +69,30 @@ int run_string()
             print("City:", person.city)
 
             -- Iterate through the table
-            for key, value in pairs(person) do
-                print(key .. ": " .. tostring(value))
-            end
+            -- for key, value in pairs(person) do
+            --     print(key .. ": " .. tostring(value))
+            -- end
+
+            return person;
         end
     )");
 
-    // auto callable = state["call"].as<bool(std::function<bool(double, double)>)>();
-    // std::cout << callable([](double a, double b) { return a == b; }) << std::endl;
+    auto call = state["call_2"].as<nil::xlua::Var()>();
 
-    state["call_2"].as<void()>()();
+    auto& person = state["person"].as<Person&>();
+    std::cout << &person << std::endl;
+    auto v = call();
+    std::cout << &v.as<Person&>() << std::endl;
+
+    std::cout << "-------\n";
+    std::cout << person.name << std::endl;
+    std::cout << person.age << std::endl;
+    std::cout << person.job << std::endl;
+    std::cout << person.city << std::endl;
+
+    std::cout << "-------\n";
+    person.name = "njla";
+    call();
 
     state.gc();
     return 0;

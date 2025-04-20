@@ -1,6 +1,7 @@
 #include "Ref.hpp"
 #include "TypeDef.hpp"
 
+#include <lua.h>
 #include <memory>
 
 namespace nil::xlua
@@ -28,12 +29,38 @@ namespace nil::xlua
         }
 
         template <typename T>
-        auto as() const
+        decltype(auto) as() const
         {
             return TypeDef<T>::pull(ref);
         }
 
     private:
         std::shared_ptr<Ref> ref;
+    };
+
+    template <>
+    struct TypeDef<Var>
+    {
+        static bool check(lua_State* state, int index)
+        {
+            return luaL_checkudata(state, index, nil::xalt::str_name_type_v<Var>) != nullptr;
+        }
+
+        static Var value(lua_State* state, int index)
+        {
+            lua_pushvalue(state, index);
+            return Var(std::make_shared<Ref>(state));
+        }
+
+        static void push(lua_State* state, Var callable)
+        {
+            auto* data = static_cast<Var*>(lua_newuserdata(state, sizeof(Var)));
+            new (data) Var(std::move(callable));
+        }
+
+        static auto& pull(const std::shared_ptr<Ref>& ref)
+        {
+            return TypeDefCommon<Var>::pull_ref(ref);
+        }
     };
 }

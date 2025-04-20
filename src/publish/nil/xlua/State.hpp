@@ -17,7 +17,6 @@ extern "C"
 #include "lualib.h"
 }
 
-#include <iostream>
 #include <string_view>
 
 namespace nil::xlua
@@ -148,16 +147,16 @@ namespace nil::xlua
                 }
             );
             lua_setfield(state, -2, "__newindex");
-            lua_pushcfunction(
-                state,
-                [](lua_State* s)
-                {
-                    T* data = static_cast<T*>(luaL_checkudata(s, 1, nil::xalt::str_name_type_v<T>));
-                    type_pair_prop(data, luaL_checkstring(s, 2), s, typename Type<T>::Props());
-                    return 1;
-                }
-            );
-            lua_setfield(state, -2, "__pairs");
+            // lua_pushcfunction(
+            //     state,
+            //     [](lua_State* s)
+            //     {
+            //         T* data = static_cast<T*>(luaL_checkudata(s, 1,
+            //         nil::xalt::str_name_type_v<T>)); type_pair_prop(data, luaL_checkstring(s, 2),
+            //         s, typename Type<T>::Props()); return 1;
+            //     }
+            // );
+            // lua_setfield(state, -2, "__pairs");
         }
 
     private:
@@ -173,7 +172,7 @@ namespace nil::xlua
         {
             if (std::string_view(nil::xalt::literal_v<l>) == key)
             {
-                TypeDef<std::remove_cvref_t<decltype(data->*r)>>::push(s, data->*r);
+                TypeDef<decltype(data->*r)>::push(s, data->*r);
                 return;
             }
             if constexpr (sizeof...(TRest) == 0)
@@ -194,10 +193,9 @@ namespace nil::xlua
             List<Prop<l, r>, TRest...> /* props */
         )
         {
-            std::cout << std::string_view(nil::xalt::literal_v<l>) << " == " << key << std::endl;
             if (std::string_view(nil::xalt::literal_v<l>) == key)
             {
-                data->*r = TypeDef<std::remove_cvref_t<decltype(data->*r)>>::value(s, 3);
+                data->*r = TypeDef<decltype(data->*r)>::value(s, 3);
                 return;
             }
             if constexpr (sizeof...(TRest) == 0)
@@ -216,33 +214,30 @@ namespace nil::xlua
             List<Constructor<CType...>, TRest...> /* constructors */
         )
         {
-            if (sizeof...(CType) == lua_gettop(s))
-            {
-                const auto done = [s]<std::size_t... I>(std::index_sequence<I...>)
+            if ([s]<std::size_t... I>(std::index_sequence<I...>)
                 {
-                    const auto match
-                        = (true && ... && TypeDef<std::remove_cvref_t<CType>>::check(s, I + 1));
-                    if (match)
+                    if (sizeof...(CType) != lua_gettop(s)) {
+                        return false;
+                    }
+                    if ((true && ... && TypeDef<CType>::check(s, I + 1)))
                     {
                         auto* data = static_cast<T*>(lua_newuserdata(s, sizeof(T)));
-                        new (data) T(TypeDef<std::remove_cvref_t<CType>>::value(s, I + 1)...);
+                        new (data) T(TypeDef<CType>::value(s, I + 1)...);
                         luaL_getmetatable(s, nil::xalt::str_name_type_v<T>);
                         lua_setmetatable(s, -2);
+                        return true;
                     }
-                    return match;
-                }(std::make_index_sequence<sizeof...(CType)>());
-                if (done)
+                    return false;
+                }(std::make_index_sequence<sizeof...(CType)>()))
+            {
+                if constexpr (sizeof...(TRest) == 0)
                 {
-                    return;
+                    throw_error(s);
                 }
-            }
-            if constexpr (sizeof...(TRest) == 0)
-            {
-                throw_error(s);
-            }
-            else
-            {
-                type_construct<T>(s, List<TRest...>());
+                else
+                {
+                    type_construct<T>(s, List<TRest...>());
+                }
             }
         }
     };
