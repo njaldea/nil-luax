@@ -3,6 +3,7 @@
 
 #include <lua.h>
 #include <memory>
+#include <nil/xalt/checks.hpp>
 
 namespace nil::xlua
 {
@@ -22,8 +23,17 @@ namespace nil::xlua
         ~Var() noexcept = default;
 
         template <typename T>
+            requires(is_value_type<T> || nil::xalt::is_of_template_v<T, std::function>)
         // NOLINTNEXTLINE
         operator T() const
+        {
+            return as<T>();
+        }
+
+        template <typename T>
+            requires(!is_value_type<T> && !nil::xalt::is_of_template_v<T, std::function>)
+        // NOLINTNEXTLINE
+        operator T&() const
         {
             return as<T>();
         }

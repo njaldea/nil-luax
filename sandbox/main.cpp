@@ -3,6 +3,7 @@
 
 #include <nil/xalt/checks.hpp>
 #include <nil/xalt/literal.hpp>
+#include <nil/xalt/noisy_type.hpp>
 #include <nil/xalt/tlist.hpp>
 #include <nil/xlua.hpp>
 
@@ -84,27 +85,44 @@ int run_string()
         end
     )");
 
-    auto call = state["call_2"].as<nil::xlua::Var()>();
+    // auto call = state["call_2"].as<nil::xlua::Var()>();
 
-    auto ff = +[]() { std::cout << "hello world\n"; };
-    state.set("hello", ff);
+    struct HelloWorld
+    {
+        HelloWorld()
+        {
+            std::cout << this << std::endl;
+        }
+
+        void operator()() const
+        {
+            std::cout << this << std::endl;
+            std::cout << this << " : hello world\n";
+        }
+
+        nil::xalt::noisy_type<"hello world"> t;
+    };
+
+    state.set("hello", HelloWorld());
 
     state["hello"].as<void()>()();
+    HelloWorld& world = state["hello"];
+    world();
 
-    auto& person = state["person"].as<Person&>();
-    std::cout << &person << std::endl;
-    auto v = call();
-    std::cout << &v.as<Person&>() << std::endl;
+    // auto& person = state["person"].as<Person&>();
+    // std::cout << &person << std::endl;
+    // auto v = call();
+    // std::cout << &v.as<Person&>() << std::endl;
 
-    std::cout << "-------\n";
-    std::cout << person.name << std::endl;
-    std::cout << person.age << std::endl;
-    std::cout << person.job << std::endl;
-    std::cout << person.city << std::endl;
+    // std::cout << "-------\n";
+    // std::cout << person.name << std::endl;
+    // std::cout << person.age << std::endl;
+    // std::cout << person.job << std::endl;
+    // std::cout << person.city << std::endl;
 
-    std::cout << "-------\n";
-    person.name = "njla";
-    call();
+    // std::cout << "-------\n";
+    // person.name = "njla";
+    // call();
 
     state.gc();
     return 0;

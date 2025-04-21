@@ -47,16 +47,30 @@ namespace nil::xlua
             {
                 auto* state = ref->push();
                 auto v = TypeDef<T>::value(state, -1);
-                lua_pop(state, -1);
+                lua_pop(state, 1);
                 return v;
             }
             else
             {
                 auto* state = ref->push();
                 auto* ptr = static_cast<T*>(lua_touserdata(state, -1));
-                lua_pop(state, -1);
+                lua_pop(state, 1);
                 return *ptr;
             }
+        }
+
+        static decltype(auto) pull_closure(const std::shared_ptr<Ref>& ref)
+        {
+            auto* state = ref->push();
+            if (lua_iscfunction(state, -1) == 0)
+            {
+                throw_error(state);
+            }
+            lua_getupvalue(state, -1, 1);
+            auto* value = static_cast<T*>(lua_touserdata(state, -1));
+            lua_pop(state, 1);
+            lua_pop(state, 1);
+            return *value;
         }
 
         static auto push_closure(lua_State* state, T context)
@@ -271,6 +285,13 @@ namespace nil::xlua
 
         static auto pull(const std::shared_ptr<Ref>& ref)
         {
+            // pulling std::function needs to use lua api since
+            // i can't guarantee if the content of the upvalue is
+            // an std::function. user side might store a lambda
+            // but then get an std::function out of it.
+
+            // either to store everything in terms of std::function
+            // to the upvalues, or use lua api to call the method
             return std::function<R(Args...)>(
                 [ref](Args... args)
                 {
@@ -292,7 +313,7 @@ namespace nil::xlua
                     if constexpr (!std::is_same_v<void, R> && !std::is_reference_v<R>)
                     {
                         auto value = TypeDef<R>::value(state, -1);
-                        lua_pop(state, -1);
+                        lua_pop(state, 1);
                         return value;
                     }
                 }
@@ -327,7 +348,7 @@ namespace nil::xlua
 
         static auto& pull(const std::shared_ptr<Ref>& ref)
         {
-            return TypeDefCommon<T>::pull(ref);
+            return TypeDefCommon<T>::pull_closure(ref);
         }
     };
 
