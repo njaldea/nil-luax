@@ -1,50 +1,23 @@
 #pragma once
 
-#include "TypeDef.hpp"
+#include "Ref.hpp"
+#include "UserType.hpp"
 #include "Var.hpp"
-#include "error.hpp"
 
 #include <nil/xalt/fn_sign.hpp>
-#include <nil/xalt/literal.hpp>
 #include <nil/xalt/str_name.hpp>
 #include <nil/xalt/tlist.hpp>
 
 extern "C"
 {
 #include <lauxlib.h>
-#include <lua.h>
 #include <lualib.h>
 }
 
 #include <string_view>
-#include <type_traits>
-#include <utility>
 
 namespace nil::xlua
 {
-    template <typename... Args>
-    struct Constructor
-    {
-    };
-
-    template <nil::xalt::literal name, auto ptr_to_member>
-    struct Property
-    {
-    };
-
-    template <nil::xalt::literal name, auto ptr_to_member>
-    struct Method
-    {
-    };
-
-    template <typename... Types>
-    struct List
-    {
-    };
-
-    template <typename T>
-    struct Type;
-
     class State final
     {
     public:
@@ -98,23 +71,23 @@ namespace nil::xlua
         }
 
         template <typename C, typename MemFun>
-            requires(std::is_pointer_v<MemFun> && std::is_same_v<typename nil::xalt::fn_sign<MemFun>::class_type, C>)
+            requires(std::is_pointer_v<MemFun> && std::is_same_v<typename xalt::fn_sign<MemFun>::class_type, C>)
         void set(std::string_view name, MemFun fun, C* context)
         {
             constexpr auto wrap //
-                = []<typename... Args>(C* c, MemFun f, nil::xalt::tlist_types<Args...>)
+                = []<typename... Args>(C* c, MemFun f, xalt::tlist_types<Args...>)
             { return [c, f](Args... args) { return (c->*f)(args...); }; };
-            set(name, wrap(context, fun, typename nil::xalt::fn_sign<MemFun>::arg_types()));
+            set(name, wrap(context, fun, typename xalt::fn_sign<MemFun>::arg_types()));
         }
 
         template <typename FreeFun>
-            requires(std::is_pointer_v<FreeFun> && std::is_same_v<typename nil::xalt::fn_sign<FreeFun>::class_type, void>)
+            requires(std::is_pointer_v<FreeFun> && std::is_same_v<typename xalt::fn_sign<FreeFun>::class_type, void>)
         void set(std::string_view name, FreeFun fun)
         {
             constexpr auto wrap //
-                = []<typename... Args>(FreeFun f, nil::xalt::tlist_types<Args...>)
+                = []<typename... Args>(FreeFun f, xalt::tlist_types<Args...>)
             { return [f](Args... args) { return f(args...); }; };
-            set(name, wrap(fun, typename nil::xalt::fn_sign<FreeFun>::arg_types()));
+            set(name, wrap(fun, typename xalt::fn_sign<FreeFun>::arg_types()));
         }
 
         void gc()
@@ -130,182 +103,17 @@ namespace nil::xlua
         template <typename T>
         void add_type(std::string_view name)
         {
-            lua_register(
-                state,
-                name.data(),
-                [](lua_State* s)
-                {
-                    type_construct<T>(s, typename Type<T>::Constructors());
-                    return 1;
-                } //
-            );
-
-            luaL_newmetatable(state, nil::xalt::str_name_type_v<T>);
-            lua_pushcfunction(state, &TypeDefCommon<T>::del);
-            lua_setfield(state, -2, "__gc");
-            lua_pushcfunction(
-                state,
-                [](lua_State* s)
-                {
-                    T* data = static_cast<T*>(luaL_checkudata(s, 1, nil::xalt::str_name_type_v<T>));
-                    type_get_members(data, luaL_checkstring(s, 2), s, typename Type<T>::Members());
-                    return 1;
-                }
-            );
+            lua_register(state, name.data(), &UserType<T>::type_constructors);
+            luaL_newmetatable(state, xalt::str_name_type_v<T>.data());
+            lua_pushcfunction(state, &UserType<T>::type_close);
+            lua_setfield(state, -2, "__close");
+            lua_pushcfunction(state, &UserType<T>::type_index);
             lua_setfield(state, -2, "__index");
-            lua_pushcfunction(
-                state,
-                [](lua_State* s)
-                {
-                    T* data = static_cast<T*>(luaL_checkudata(s, 1, nil::xalt::str_name_type_v<T>));
-                    type_set_members(data, luaL_checkstring(s, 2), s, typename Type<T>::Members());
-                    return 1;
-                }
-            );
+            lua_pushcfunction(state, &UserType<T>::type_newindex);
             lua_setfield(state, -2, "__newindex");
-            // lua_pushcfunction(
-            //     state,
-            //     [](lua_State* s)
-            //     {
-            //         T* data = static_cast<T*>(luaL_checkudata(s, 1,
-            //         nil::xalt::str_name_type_v<T>)); type_pair_prop(data, luaL_checkstring(s, 2),
-            //         s, typename Type<T>::Props()); return 1;
-            //     }
-            // );
-            // lua_setfield(state, -2, "__pairs");
         }
 
     private:
         lua_State* state;
-
-        template <typename T, nil::xalt::literal l, auto r, typename... TRest>
-        static void type_get_members(
-            T* data,
-            const char* key,
-            lua_State* s,
-            List<Property<l, r>, TRest...> /* props */
-        )
-        {
-            if (std::string_view(nil::xalt::literal_v<l>) == key)
-            {
-                TypeDef<decltype(data->*r)>::push(s, data->*r);
-                return;
-            }
-            if constexpr (sizeof...(TRest) > 0)
-            {
-                type_get_members(data, key, s, List<TRest...>());
-            }
-            else
-            {
-                luaL_error(s, "[%s] member [%s] is unknown", nil::xalt::str_name_type_v<T>, key);
-            }
-        }
-
-        template <typename T, nil::xalt::literal l, auto r, typename... TRest>
-        static void type_get_members(
-            T* data,
-            const char* key,
-            lua_State* s,
-            List<Method<l, r>, TRest...> /* props */
-        )
-        {
-            if (std::string_view(nil::xalt::literal_v<l>) == key)
-            {
-                constexpr auto method_maker
-                    = []<typename... Args>(auto rr, nil::xalt::tlist_types<Args...>)
-                { return [rr](T& d, Args... args) { return (d.*rr)(args...); }; };
-                auto method
-                    = method_maker(r, typename nil::xalt::fn_sign<decltype(r)>::arg_types());
-                TypeDef<decltype(method)>::push(s, std::move(method));
-                return;
-            }
-            if constexpr (sizeof...(TRest) > 0)
-            {
-                type_get_prop(data, key, s, List<TRest...>());
-            }
-            else
-            {
-                luaL_error(s, "[%s] member [%s] is unknown", nil::xalt::str_name_type_v<T>, key);
-            }
-        }
-
-        template <typename T, nil::xalt::literal l, auto r, typename... TRest>
-        static void type_set_members(
-            T* data,
-            const char* key,
-            lua_State* s,
-            List<Property<l, r>, TRest...> /* props */
-        )
-        {
-            if (std::string_view(nil::xalt::literal_v<l>) == key)
-            {
-                data->*r = TypeDef<decltype(data->*r)>::value(s, 3);
-                return;
-            }
-            if constexpr (sizeof...(TRest) > 0)
-            {
-                type_set_members(data, key, s, List<TRest...>());
-            }
-            else
-            {
-                luaL_error(s, "[%s] member [%s] is unknown", nil::xalt::str_name_type_v<T>, key);
-            }
-        }
-
-        template <typename T, nil::xalt::literal l, auto r, typename... TRest>
-        static void type_set_members(
-            T* data,
-            const char* key,
-            lua_State* s,
-            List<Method<l, r>, TRest...> /* props */
-        )
-        {
-            if (std::string_view(nil::xalt::literal_v<l>) == key)
-            {
-                luaL_error(s, "[%s] member functions should not be replaced", nil::xalt::str_name_type_v<T>);
-                return;
-            }
-            if constexpr (sizeof...(TRest) > 0)
-            {
-                type_set_members(data, key, s, List<TRest...>());
-            }
-            else
-            {
-                luaL_error(s, "[%s] member [%s] is unknown", nil::xalt::str_name_type_v<T>, key);
-            }
-        }
-
-        template <typename T, typename... CType, typename... TRest>
-        static void type_construct(
-            lua_State* s,
-            List<Constructor<CType...>, TRest...> /* constructors */
-        )
-        {
-            if ([s]<std::size_t... I>(std::index_sequence<I...>)
-                {
-                    if (sizeof...(CType) != lua_gettop(s)) {
-                        return false;
-                    }
-                    if ((true && ... && TypeDef<CType>::check(s, I + 1)))
-                    {
-                        auto* data = static_cast<T*>(lua_newuserdata(s, sizeof(T)));
-                        new (data) T(TypeDef<CType>::value(s, I + 1)...);
-                        luaL_getmetatable(s, nil::xalt::str_name_type_v<T>);
-                        lua_setmetatable(s, -2);
-                        return true;
-                    }
-                    return false;
-                }(std::make_index_sequence<sizeof...(CType)>()))
-            {
-                if constexpr (sizeof...(TRest) == 0)
-                {
-                    luaL_error(s, "[%s] can't be constructed with the provided arguments", nil::xalt::str_name_type_v<T>);
-                }
-                else
-                {
-                    type_construct<T>(s, List<TRest...>());
-                }
-            }
-        }
     };
 }

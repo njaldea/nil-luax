@@ -10,6 +10,7 @@ add_library(
     publish/nil/xlua/Ref.hpp
     publish/nil/xlua/State.hpp
     publish/nil/xlua/TypeDef.hpp
+    publish/nil/xlua/UserType.hpp
     publish/nil/xlua/Var.hpp
 )
 

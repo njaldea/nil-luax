@@ -85,14 +85,14 @@ namespace nil::xlua
 
             constexpr auto closure_maker //
                 = []<typename... Args, std::size_t... I>(
-                      nil::xalt::tlist_types<Args...> /* arg types */,
+                      xalt::tlist_types<Args...> /* arg types */,
                       std::index_sequence<I...> /* arg indices */
                   )
             {
                 return [](lua_State* s)
                 {
                     auto* user_data = static_cast<T*>(lua_touserdata(s, lua_upvalueindex(1)));
-                    using return_type = typename nil::xalt::fn_sign<T>::return_type;
+                    using return_type = typename xalt::fn_sign<T>::return_type;
                     if constexpr (!std::is_same_v<void, return_type>)
                     {
                         TypeDef<return_type>::push(
@@ -109,8 +109,8 @@ namespace nil::xlua
                 };
             };
             constexpr auto closure = closure_maker(
-                typename nil::xalt::fn_sign<T>::arg_types(),
-                std::make_index_sequence<nil::xalt::fn_sign<T>::arg_types::size>()
+                typename xalt::fn_sign<T>::arg_types(),
+                std::make_index_sequence<xalt::fn_sign<T>::arg_types::size>()
             );
             lua_pushcclosure(state, closure, 1);
         }
@@ -338,7 +338,7 @@ namespace nil::xlua
         }
     };
 
-    template <nil::xalt::is_fn T>
+    template <xalt::is_fn T>
     struct TypeDef<T> final
     {
         static void push(lua_State* state, T callable)
@@ -355,14 +355,14 @@ namespace nil::xlua
     // starting here are ref types
 
     template <typename T>
-        requires(!is_value_type<std::decay_t<T>>) && (!nil::xalt::is_fn<std::remove_cvref_t<T>>)
+        requires(!is_value_type<std::decay_t<T>>) && (!xalt::is_fn<std::remove_cvref_t<T>>)
     struct TypeDef<T> final
     {
         using raw_type = std::remove_cvref_t<T>;
 
         static bool check(lua_State* state, int index)
         {
-            return luaL_checkudata(state, index, nil::xalt::str_name_type_v<raw_type>);
+            return luaL_checkudata(state, index, xalt::str_name_type_v<raw_type>.data());
         }
 
         static T value(lua_State* state, int index)
@@ -379,7 +379,7 @@ namespace nil::xlua
             if constexpr (std::is_reference_v<T>)
             {
                 lua_pushlightuserdata(state, &callable);
-                luaL_getmetatable(state, nil::xalt::str_name_type_v<raw_type>);
+                luaL_getmetatable(state, xalt::str_name_type_v<raw_type>);
                 lua_setmetatable(state, -2);
             }
             else

@@ -1,9 +1,10 @@
 #include "Ref.hpp"
 #include "TypeDef.hpp"
 
+#include <nil/xalt/checks.hpp>
+
 #include <lua.h>
 #include <memory>
-#include <nil/xalt/checks.hpp>
 
 namespace nil::xlua
 {
@@ -23,7 +24,7 @@ namespace nil::xlua
         ~Var() noexcept = default;
 
         template <typename T>
-            requires(is_value_type<T> || nil::xalt::is_of_template_v<T, std::function>)
+            requires(is_value_type<T> || xalt::is_of_template_v<T, std::function>)
         // NOLINTNEXTLINE
         operator T() const
         {
@@ -31,7 +32,7 @@ namespace nil::xlua
         }
 
         template <typename T>
-            requires(!is_value_type<T> && !nil::xalt::is_of_template_v<T, std::function>)
+            requires(!is_value_type<T> && !xalt::is_of_template_v<T, std::function>)
         // NOLINTNEXTLINE
         operator T&() const
         {
@@ -53,7 +54,7 @@ namespace nil::xlua
     {
         static bool check(lua_State* state, int index)
         {
-            return luaL_checkudata(state, index, nil::xalt::str_name_type_v<Var>) != nullptr;
+            return luaL_checkudata(state, index, xalt::str_name_type_v<Var>.data()) != nullptr;
         }
 
         static Var value(lua_State* state, int index)
