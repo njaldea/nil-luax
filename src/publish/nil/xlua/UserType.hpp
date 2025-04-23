@@ -67,7 +67,7 @@ namespace nil::xlua
         {
             if constexpr (requires() { typename Type<T>::Members; })
             {
-                T* data = static_cast<T*>(luaL_checkudata(s, 1, xalt::str_name_type_v<T>.data()));
+                T* data = static_cast<T*>(luaL_checkudata(s, 1, xalt::str_name_type_v<T>));
                 const char* key = luaL_checkstring(s, 2);
                 type_get_members(data, key, hash_fnv1a(key), s, typename Type<T>::Members());
                 return 1;
@@ -82,7 +82,7 @@ namespace nil::xlua
         {
             if constexpr (requires() { typename Type<T>::Members; })
             {
-                T* data = static_cast<T*>(luaL_checkudata(s, 1, xalt::str_name_type_v<T>.data()));
+                T* data = static_cast<T*>(luaL_checkudata(s, 1, xalt::str_name_type_v<T>));
                 const char* key = luaL_checkstring(s, 2);
                 type_set_members(data, key, hash_fnv1a(key), s, typename Type<T>::Members());
                 return 1;
@@ -109,7 +109,7 @@ namespace nil::xlua
                 {
                     auto* data = static_cast<T*>(lua_newuserdata(s, sizeof(T)));
                     new (data) T(TypeDef<CType>::value(s, I + 1)...);
-                    luaL_getmetatable(s, xalt::str_name_type_v<T>.data());
+                    luaL_getmetatable(s, xalt::str_name_type_v<T>);
                     lua_setmetatable(s, -2);
                     return true;
                 }
@@ -118,8 +118,7 @@ namespace nil::xlua
             {
                 if constexpr (sizeof...(TRest) == 0)
                 {
-                    static constexpr const auto* meta = xalt::str_name_type_v<T>.data();
-                    luaL_error(s, "[%s] can't be constructed with the provided arguments", meta);
+                    luaL_error(s, "[%s] can't be constructed with the provided arguments", xalt::str_name_type_v<T>);
                 }
                 else
                 {
@@ -164,16 +163,14 @@ namespace nil::xlua
             }
             else
             {
-                static constexpr const auto* meta = xalt::str_name_type_v<T>.data();
-                luaL_error(s, "[%s] member [%s] is unknown", meta, key);
+                luaL_error(s, "[%s] member [%s] is unknown", xalt::str_name_type_v<T>, key);
             }
         }
 
         template <xalt::literal l, auto p>
         static void type_set_member(T* /* data */, Method<l, p> /* member */, lua_State* s)
         {
-            static constexpr const auto* meta = xalt::str_name_type_v<T>.data();
-            luaL_error(s, "[%s] member functions should not be replaced", meta);
+            luaL_error(s, "[%s] member functions should not be replaced", xalt::str_name_type_v<T>);
         }
 
         template <xalt::literal l, auto p>
@@ -203,8 +200,7 @@ namespace nil::xlua
             }
             else
             {
-                static constexpr const auto* meta = xalt::str_name_type_v<T>.data();
-                luaL_error(s, "[%s] member [%s] is unknown", meta, key);
+                luaL_error(s, "[%s] member [%s] is unknown", xalt::str_name_type_v<T>, key);
             }
         }
 

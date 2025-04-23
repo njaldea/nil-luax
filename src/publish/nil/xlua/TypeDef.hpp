@@ -362,7 +362,7 @@ namespace nil::xlua
 
         static bool check(lua_State* state, int index)
         {
-            return luaL_checkudata(state, index, xalt::str_name_type_v<raw_type>.data());
+            return luaL_checkudata(state, index, xalt::str_name_type_v<raw_type>);
         }
 
         static T value(lua_State* state, int index)

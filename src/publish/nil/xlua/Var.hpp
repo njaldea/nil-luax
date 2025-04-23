@@ -54,7 +54,7 @@ namespace nil::xlua
     {
         static bool check(lua_State* state, int index)
         {
-            return luaL_checkudata(state, index, xalt::str_name_type_v<Var>.data()) != nullptr;
+            return luaL_checkudata(state, index, xalt::str_name_type_v<Var>) != nullptr;
         }
 
         static Var value(lua_State* state, int index)

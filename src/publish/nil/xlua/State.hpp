@@ -104,7 +104,7 @@ namespace nil::xlua
         void add_type(std::string_view name)
         {
             lua_register(state, name.data(), &UserType<T>::type_constructors);
-            luaL_newmetatable(state, xalt::str_name_type_v<T>.data());
+            luaL_newmetatable(state, xalt::str_name_type_v<T>);
             lua_pushcfunction(state, &UserType<T>::type_close);
             lua_setfield(state, -2, "__close");
             lua_pushcfunction(state, &UserType<T>::type_index);

@@ -107,7 +107,7 @@ int run_string()
     state.set("hello", HelloWorld());
 
     state["hello"].as<void()>()();
-    HelloWorld world = state["hello"];
+    const HelloWorld& world = state["hello"];
     world();
 
     auto& person = state["person"].as<Person&>();
