@@ -362,16 +362,21 @@ namespace nil::xlua
 
         static bool check(lua_State* state, int index)
         {
-            return luaL_checkudata(state, index, xalt::str_name_type_v<raw_type>);
+            return luaL_testudata(state, index, xalt::str_name_type_v<raw_type>) != nullptr;
         }
 
         static T value(lua_State* state, int index)
         {
-            if (!check(state, index))
+            raw_type* data = *static_cast<raw_type*>(luaL_testudata(
+                state,
+                index,
+                xalt::str_name_type_v<raw_type> //
+            ));
+            if (data == nullptr)
             {
                 throw_error(state);
             }
-            return *static_cast<raw_type*>(lua_touserdata(state, index));
+            return *data;
         }
 
         static void push(lua_State* state, T callable)

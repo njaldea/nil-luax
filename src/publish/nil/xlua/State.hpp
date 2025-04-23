@@ -111,6 +111,12 @@ namespace nil::xlua
             lua_setfield(state, -2, "__index");
             lua_pushcfunction(state, &UserType<T>::type_newindex);
             lua_setfield(state, -2, "__newindex");
+            // TODO:
+            //  -  __tostring
+            //  -  __concat
+            //  -  __gc (?)
+            //  -  __pairs
+            //  -  __call
         }
 
     private:

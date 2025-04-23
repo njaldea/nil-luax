@@ -2,7 +2,6 @@
 
 #include "TypeDef.hpp"
 
-#include <lua.h>
 #include <nil/xalt/fn_sign.hpp>
 #include <nil/xalt/literal.hpp>
 #include <nil/xalt/str_name.hpp>
@@ -11,6 +10,7 @@
 extern "C"
 {
 #include <lauxlib.h>
+#include <lua.h>
 }
 
 #include <utility>
@@ -49,12 +49,12 @@ namespace nil::xlua
             if constexpr (requires() { typename Type<T>::Constructors; })
             {
                 type_constructor(s, typename Type<T>::Constructors());
-                return 1;
             }
             else
             {
-                return 0;
+                type_constructor(s, List<Constructor<>>());
             }
+            return 1;
         }
 
         static int type_close(lua_State* s)
@@ -67,7 +67,11 @@ namespace nil::xlua
         {
             if constexpr (requires() { typename Type<T>::Members; })
             {
-                T* data = static_cast<T*>(luaL_checkudata(s, 1, xalt::str_name_type_v<T>));
+                T* data = static_cast<T*>(luaL_testudata(s, 1, xalt::str_name_type_v<T>));
+                if (data == nullptr)
+                {
+                    luaL_error(s, "[%s] is of different type", xalt::str_name_type_v<T>);
+                }
                 const char* key = luaL_checkstring(s, 2);
                 type_get_members(data, key, hash_fnv1a(key), s, typename Type<T>::Members());
                 return 1;
@@ -82,7 +86,11 @@ namespace nil::xlua
         {
             if constexpr (requires() { typename Type<T>::Members; })
             {
-                T* data = static_cast<T*>(luaL_checkudata(s, 1, xalt::str_name_type_v<T>));
+                T* data = static_cast<T*>(luaL_testudata(s, 1, xalt::str_name_type_v<T>));
+                if (data == nullptr)
+                {
+                    luaL_error(s, "[%s] is of different type", xalt::str_name_type_v<T>);
+                }
                 const char* key = luaL_checkstring(s, 2);
                 type_set_members(data, key, hash_fnv1a(key), s, typename Type<T>::Members());
                 return 1;
@@ -100,21 +108,21 @@ namespace nil::xlua
             List<Constructor<CType...>, TRest...> /* constructors */
         )
         {
-            if ([s]<std::size_t... I>(std::index_sequence<I...>)
+            constexpr auto match = []<std::size_t... I>(lua_State* ss, std::index_sequence<I...>)
             {
-                if (sizeof...(CType) != lua_gettop(s)) {
+                if (sizeof...(CType) == lua_gettop(ss)
+                    && (true && ... && TypeDef<CType>::check(ss, I + 1)))
+                {
+                    T* data = static_cast<T*>(lua_newuserdata(ss, sizeof(T)));
+                    new (data) T(TypeDef<CType>::value(ss, I + 1)...);
+                    luaL_getmetatable(ss, xalt::str_name_type_v<T>);
+                    lua_setmetatable(ss, -2);
                     return false;
                 }
-                if ((true && ... && TypeDef<CType>::check(s, I + 1)))
-                {
-                    auto* data = static_cast<T*>(lua_newuserdata(s, sizeof(T)));
-                    new (data) T(TypeDef<CType>::value(s, I + 1)...);
-                    luaL_getmetatable(s, xalt::str_name_type_v<T>);
-                    lua_setmetatable(s, -2);
-                    return true;
-                }
-                return false;
-            }(std::make_index_sequence<sizeof...(CType)>()))
+                return true;
+            };
+
+            if (match(s, std::make_index_sequence<sizeof...(CType)>()))
             {
                 if constexpr (sizeof...(TRest) == 0)
                 {
@@ -188,7 +196,7 @@ namespace nil::xlua
             List<M, TRest...> /* props */
         )
         {
-            static constexpr auto hash = hash_fnv1a(M());
+            static constinit auto hash = hash_fnv1a(M());
             if (key_hash == hash)
             {
                 type_set_member(data, M(), s);
@@ -205,13 +213,13 @@ namespace nil::xlua
         }
 
         template <xalt::literal l, auto r>
-        static constexpr auto hash_fnv1a(Property<l, r> /* info */) -> std::uint32_t
+        static consteval auto hash_fnv1a(Property<l, r> /* info */) -> std::uint32_t
         {
             return hash_fnv1a(xalt::literal_v<l>);
         }
 
         template <xalt::literal l, auto r>
-        static constexpr auto hash_fnv1a(Method<l, r> /* info */) -> std::uint32_t
+        static consteval auto hash_fnv1a(Method<l, r> /* info */) -> std::uint32_t
         {
             return hash_fnv1a(xalt::literal_v<l>);
         }
