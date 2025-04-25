@@ -59,6 +59,11 @@ namespace nil::xlua
 
         Var operator[](std::string_view name)
         {
+            return this->get(name);
+        }
+
+        Var get(std::string_view name)
+        {
             lua_getglobal(state, name.data());
             return Var(std::make_shared<Ref>(state));
         }

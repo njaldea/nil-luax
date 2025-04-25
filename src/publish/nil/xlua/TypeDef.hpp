@@ -17,6 +17,9 @@ extern "C"
 #include <type_traits>
 #include <utility>
 
+//
+#include <iostream>
+
 /**
  * check - only used to check constructor arg type
  * pull  - for getting data from var
@@ -161,7 +164,7 @@ namespace nil::xlua
 
         static T value(lua_State* state, int index)
         {
-            if (check(state, index))
+            if (!check(state, index))
             {
                 throw_error(state);
             }
@@ -209,7 +212,7 @@ namespace nil::xlua
     };
 
     template <typename T>
-        requires(std::is_same_v<std::string, T> || std::is_same_v<std::string_view, T>)
+        requires(std::is_same_v<std::string, T>)
     struct TypeDef<T> final
     {
         static bool check(lua_State* state, int index)
@@ -367,7 +370,7 @@ namespace nil::xlua
 
         static T value(lua_State* state, int index)
         {
-            raw_type* data = *static_cast<raw_type*>(luaL_testudata(
+            auto* data = static_cast<raw_type*>(luaL_testudata(
                 state,
                 index,
                 xalt::str_name_type_v<raw_type> //
