@@ -39,6 +39,9 @@ namespace nil::xlua
             return as<T>();
         }
 
+        operator std::string_view() const = delete;
+        operator const char*() const = delete;
+
         template <typename T>
         decltype(auto) as() const
         {

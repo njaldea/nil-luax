@@ -17,9 +17,6 @@ extern "C"
 #include <type_traits>
 #include <utility>
 
-//
-#include <iostream>
-
 /**
  * check - only used to check constructor arg type
  * pull  - for getting data from var
@@ -212,7 +209,7 @@ namespace nil::xlua
     };
 
     template <typename T>
-        requires(std::is_same_v<std::string, T>)
+        requires(std::is_same_v<std::string, T> || std::is_same_v<std::string_view, T> || std::is_same_v<const char*, T>)
     struct TypeDef<T> final
     {
         static bool check(lua_State* state, int index)
@@ -231,12 +228,19 @@ namespace nil::xlua
 
         static void push(lua_State* state, const T& value)
         {
-            lua_pushlstring(state, value.data(), value.size());
+            if constexpr (std::is_same_v<const char*, T>)
+            {
+                lua_pushlstring(state, value);
+            }
+            else
+            {
+                lua_pushlstring(state, value.data(), value.size());
+            }
         }
 
         static auto pull(const std::shared_ptr<Ref>& ref)
         {
-            return TypeDefCommon<T>::pull(ref);
+            return TypeDefCommon<std::string>::pull(ref);
         }
     };
 
@@ -370,11 +374,9 @@ namespace nil::xlua
 
         static T value(lua_State* state, int index)
         {
-            auto* data = static_cast<raw_type*>(luaL_testudata(
-                state,
-                index,
-                xalt::str_name_type_v<raw_type> //
-            ));
+            auto* data = static_cast<raw_type*>(
+                luaL_testudata(state, index, xalt::str_name_type_v<raw_type>)
+            );
             if (data == nullptr)
             {
                 throw_error(state);
@@ -382,19 +384,19 @@ namespace nil::xlua
             return *data;
         }
 
-        static void push(lua_State* state, T callable)
+        static void push(lua_State* state, T value)
         {
             if constexpr (std::is_reference_v<T>)
             {
-                lua_pushlightuserdata(state, &callable);
-                luaL_getmetatable(state, xalt::str_name_type_v<raw_type>);
-                lua_setmetatable(state, -2);
+                lua_pushlightuserdata(state, &value);
             }
             else
             {
                 auto* data = static_cast<raw_type*>(lua_newuserdata(state, sizeof(raw_type)));
-                new (data) raw_type(std::move(callable));
+                new (data) raw_type(std::move(value));
             }
+            luaL_getmetatable(state, xalt::str_name_type_v<raw_type>);
+            lua_setmetatable(state, -2);
         }
 
         static auto& pull(const std::shared_ptr<Ref>& ref)
