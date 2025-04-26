@@ -11,6 +11,7 @@
 extern "C"
 {
 #include <lauxlib.h>
+#include <lua.h>
 #include <lualib.h>
 }
 
@@ -55,11 +56,6 @@ namespace nil::xlua
             {
                 throw_error(state);
             }
-        }
-
-        Var operator[](std::string_view name)
-        {
-            return this->get(name);
         }
 
         Var get(std::string_view name)
@@ -115,21 +111,24 @@ namespace nil::xlua
             luaL_newmetatable(state, xalt::str_name_type_v<T>);
             lua_pushcfunction(state, &UserType<T>::type_close);
             lua_setfield(state, -2, "__close");
-            lua_pushcfunction(state, &UserType<T>::type_index);
-            lua_setfield(state, -2, "__index");
-            lua_pushcfunction(state, &UserType<T>::type_newindex);
-            lua_setfield(state, -2, "__newindex");
             if constexpr (requires() { &T::operator(); })
             {
                 lua_pushcfunction(state, &UserType<T>::type_call);
                 lua_setfield(state, -2, "__call");
             }
+            if constexpr (requires() { typename Type<T>::Members; })
+            {
+                lua_pushcfunction(state, &UserType<T>::type_index);
+                lua_setfield(state, -2, "__index");
+                lua_pushcfunction(state, &UserType<T>::type_newindex);
+                lua_setfield(state, -2, "__newindex");
+                lua_pushcfunction(state, &UserType<T>::type_pairs);
+                lua_setfield(state, -2, "__pairs");
+            }
             // TODO:
             //  -  __tostring
             //  -  __concat
             //  -  __gc (?)
-            //  -  __pairs
-            //  -  __call
         }
 
     private:

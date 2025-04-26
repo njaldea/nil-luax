@@ -32,6 +32,7 @@ namespace nil::xlua
         = std::is_same_v<bool, T>         //
         || std::is_integral_v<T>          //
         || std::is_floating_point_v<T>    //
+        || std::is_same_v<const char*, T> //
         || std::is_same_v<std::string, T> //
         || std::is_same_v<std::string_view, T>;
 
@@ -76,14 +77,14 @@ namespace nil::xlua
             return *value;
         }
 
-        static auto push_closure(lua_State* state, T context)
+        static void push_closure(lua_State* state, T context)
         {
             auto* data = static_cast<T*>(lua_newuserdata(state, sizeof(T)));
             new (data) T(std::move(context));
 
             lua_newtable(state);
             lua_pushcfunction(state, &TypeDefCommon<T>::del);
-            lua_setfield(state, -2, "__gc");
+            lua_setfield(state, -2, "__close");
             lua_setmetatable(state, -2);
 
             constexpr auto closure_maker //
@@ -226,7 +227,7 @@ namespace nil::xlua
             {
                 throw_error(state);
             }
-            return std::string(lua_tostring(state, index));
+            return T(lua_tostring(state, index));
         }
 
         static void push(lua_State* state, const T& value)
@@ -394,6 +395,7 @@ namespace nil::xlua
         {
             if constexpr (std::is_reference_v<T>)
             {
+                static_assert(!std::is_const_v<std::remove_reference_t<T>>);
                 lua_pushlightuserdata(state, &value);
             }
             else

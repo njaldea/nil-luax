@@ -16,7 +16,7 @@ int run_from_file(std::string_view path)
 
     state.load(path);
 
-    const std::function<double(double, double)> add = state["add"];
+    const std::function<double(double, double)> add = state.get("add");
     std::cout << add(10.0, 2.0) << std::endl;
     std::cout << add(12.0, 6.0) << std::endl;
     return 0;
@@ -77,16 +77,18 @@ int run_string()
             print("City:", person.city)
 
             -- Iterate through the table
-            -- for key, value in pairs(person) do
-            --     print(key .. ": " .. tostring(value))
-            -- end
+            print("-----")
+            for key, value in pairs(person) do
+                print(key .. ": " .. tostring(value))
+            end
+            print("-----")
 
-            person:do_it()
+            -- person:do_it()
             return person;
         end
     )");
 
-    auto call = state["call_2"].as<nil::xlua::Var()>();
+    auto call = state.get("call_2").as<nil::xlua::Var()>();
 
     struct HelloWorld
     {
@@ -106,11 +108,11 @@ int run_string()
 
     state.set("hello", HelloWorld());
 
-    state["hello"].as<void()>()();
-    const HelloWorld& world = state["hello"];
+    state.get("hello").as<void()>()();
+    const HelloWorld& world = state.get("hello");
     world();
 
-    auto& person = state["person"].as<Person&>();
+    auto& person = state.get("person").as<Person&>();
     std::cout << &person << std::endl;
     auto v = call();
     std::cout << &v.as<Person&>() << std::endl;
