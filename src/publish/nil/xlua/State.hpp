@@ -108,7 +108,10 @@ namespace nil::xlua
         template <typename T>
         void add_type(std::string_view name)
         {
-            lua_register(state, name.data(), &UserType<T>::type_constructors);
+            if constexpr (requires() { typename Type<T>::Constructors; })
+            {
+                lua_register(state, name.data(), &UserType<T>::type_constructors);
+            }
             luaL_newmetatable(state, xalt::str_name_type_v<T>);
             lua_pushcfunction(state, &UserType<T>::type_close);
             lua_setfield(state, -2, "__close");
@@ -116,6 +119,11 @@ namespace nil::xlua
             lua_setfield(state, -2, "__index");
             lua_pushcfunction(state, &UserType<T>::type_newindex);
             lua_setfield(state, -2, "__newindex");
+            if constexpr (requires() { &T::operator(); })
+            {
+                lua_pushcfunction(state, &UserType<T>::type_call);
+                lua_setfield(state, -2, "__call");
+            }
             // TODO:
             //  -  __tostring
             //  -  __concat

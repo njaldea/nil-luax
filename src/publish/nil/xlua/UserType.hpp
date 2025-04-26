@@ -38,22 +38,12 @@ namespace nil::xlua
     };
 
     template <typename T>
-    struct Type;
-
-    template <typename T>
     struct UserType
     {
     public:
         static int type_constructors(lua_State* s)
         {
-            if constexpr (requires() { typename Type<T>::Constructors; })
-            {
-                type_constructor(s, typename Type<T>::Constructors());
-            }
-            else
-            {
-                type_constructor(s, List<Constructor<>>());
-            }
+            type_constructor(s, typename Type<T>::Constructors());
             return 1;
         }
 
@@ -99,6 +89,32 @@ namespace nil::xlua
             {
                 return 0;
             }
+        }
+
+        static int type_call(lua_State* s)
+        {
+            using Args = typename xalt::fn_sign<T>::arg_types;
+
+            constexpr auto fn          //
+                = []<typename... Args, //
+                     std::size_t... I> //
+                (lua_State * ss, xalt::tlist_types<Args...>, std::index_sequence<I...>)
+            {
+                T* data = static_cast<T*>(lua_touserdata(ss, 1));
+                using R = typename xalt::fn_sign<T>::return_type;
+                if constexpr (!std::is_same_v<void, R>)
+                {
+                    TypeDef<R>::push((*data)(TypeDef<Args>::value(ss, I + 2)...));
+                    return 1;
+                }
+                else
+                {
+                    (*data)(TypeDef<Args>::value(ss, I + 2)...);
+                    return 0;
+                }
+            };
+
+            return fn(s, Args(), std::make_index_sequence<Args::size>());
         }
 
     private:

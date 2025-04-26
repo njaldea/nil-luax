@@ -36,6 +36,9 @@ namespace nil::xlua
         || std::is_same_v<std::string_view, T>;
 
     template <typename T>
+    struct Type;
+
+    template <typename T>
     struct TypeDef;
 
     template <typename T>
@@ -345,7 +348,9 @@ namespace nil::xlua
         }
     };
 
-    template <xalt::is_fn T>
+    template <typename T>
+        requires(!is_value_type<std::decay_t<T>>)
+        && (!requires() { Type<std::remove_cvref_t<T>>(); })
     struct TypeDef<T> final
     {
         static void push(lua_State* state, T callable)
@@ -362,7 +367,8 @@ namespace nil::xlua
     // starting here are ref types
 
     template <typename T>
-        requires(!is_value_type<std::decay_t<T>>) && (!xalt::is_fn<std::remove_cvref_t<T>>)
+        requires(!is_value_type<std::decay_t<T>>)
+        && (requires() { Type<std::remove_cvref_t<T>>(); })
     struct TypeDef<T> final
     {
         using raw_type = std::remove_cvref_t<T>;
