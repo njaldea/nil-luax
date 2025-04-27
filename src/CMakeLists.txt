@@ -1,17 +1,17 @@
-project(xlua)
+project(luax)
 
 find_package(nil-xalt CONFIG REQUIRED)
 find_package(Lua REQUIRED)
 
 add_library(
     ${PROJECT_NAME} INTERFACE
-    publish/nil/xlua.hpp
-    publish/nil/xlua/error.hpp
-    publish/nil/xlua/Ref.hpp
-    publish/nil/xlua/State.hpp
-    publish/nil/xlua/TypeDef.hpp
-    publish/nil/xlua/UserType.hpp
-    publish/nil/xlua/Var.hpp
+    publish/nil/luax.hpp
+    publish/nil/luax/error.hpp
+    publish/nil/luax/Ref.hpp
+    publish/nil/luax/State.hpp
+    publish/nil/luax/TypeDef.hpp
+    publish/nil/luax/UserType.hpp
+    publish/nil/luax/Var.hpp
 )
 
 target_link_libraries(

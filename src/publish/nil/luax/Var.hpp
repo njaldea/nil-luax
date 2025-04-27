@@ -1,12 +1,10 @@
 #include "Ref.hpp"
 #include "TypeDef.hpp"
 
-#include <nil/xalt/checks.hpp>
-
 #include <lua.h>
 #include <memory>
 
-namespace nil::xlua
+namespace nil::luax
 {
     struct Var
     {
@@ -24,7 +22,7 @@ namespace nil::xlua
         ~Var() noexcept = default;
 
         template <typename T>
-            requires(is_value_type<T> || xalt::is_of_template_v<T, std::function>)
+            requires(is_value_type<T> || is_std_fn<T>)
         // NOLINTNEXTLINE
         operator T() const
         {
@@ -32,7 +30,7 @@ namespace nil::xlua
         }
 
         template <typename T>
-            requires(!is_value_type<T> && !xalt::is_of_template_v<T, std::function>)
+            requires(!is_value_type<std::remove_cvref_t<T>> && !is_std_fn<std::remove_cvref_t<T>>)
         // NOLINTNEXTLINE
         operator T&() const
         {
@@ -74,7 +72,10 @@ namespace nil::xlua
 
         static auto& pull(const std::shared_ptr<Ref>& ref)
         {
-            return TypeDefCommon<Var>::pull(ref);
+            auto* state = ref->push();
+            auto* ptr = static_cast<Var*>(lua_touserdata(state, -1));
+            lua_pop(state, 1);
+            return *ptr;
         }
     };
 }

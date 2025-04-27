@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Ref.hpp"
+#include "TypeDef.hpp"
 #include "UserType.hpp"
 #include "Var.hpp"
 
@@ -16,17 +17,29 @@ extern "C"
 }
 
 #include <string_view>
+#include <type_traits>
 
-namespace nil::xlua
+namespace nil::luax
 {
     class State final
     {
-    public:
-        State()
-            : state(luaL_newstate())
+    private:
+        template <typename T>
+        consteval static bool is_valid_set()
         {
-            luaL_openlibs(state);
+            using raw_type = std::remove_cvref_t<T>;
+            if constexpr (is_user_type<raw_type>)
+            {
+                return (!std::is_rvalue_reference_v<T> || !std::is_const_v<std::remove_reference_t<T>>);
+            }
+            else
+            {
+                return std::is_same_v<raw_type, T>;
+            }
         }
+
+    public:
+        State() = default;
 
         State(State&&) = default;
         State& operator=(State&&) = default;
@@ -40,6 +53,11 @@ namespace nil::xlua
             {
                 lua_close(state);
             }
+        }
+
+        void open_libs()
+        {
+            luaL_openlibs(state);
         }
 
         void load(std::string_view path)
@@ -65,30 +83,29 @@ namespace nil::xlua
         }
 
         template <typename T>
-        void set(std::string_view name, T fn)
+            requires(!is_valid_set<T>())
+        void set(std::string_view name, T&& fn) = delete;
+
+        template <typename T>
+            requires(is_valid_set<T>())
+        void set(std::string_view name, T&& fn)
         {
-            TypeDef<T>::push(state, std::move(fn));
+            TypeDef<T>::push(state, std::forward<T>(fn));
             lua_setglobal(state, name.data());
         }
 
-        template <typename C, typename MemFun>
-            requires(std::is_pointer_v<MemFun> && std::is_same_v<typename xalt::fn_sign<MemFun>::class_type, C>)
-        void set(std::string_view name, MemFun fun, C* context)
+        template <typename C, typename Return, typename... Args>
+        void set(std::string_view name, Return (C::*fn)(Args...), C* context)
         {
-            constexpr auto wrap //
-                = []<typename... Args>(C* c, MemFun f, xalt::tlist_types<Args...>)
-            { return [c, f](Args... args) { return (c->*f)(args...); }; };
-            set(name, wrap(context, fun, typename xalt::fn_sign<MemFun>::arg_types()));
+            set(name,
+                [context, fn](Args... args)
+                { return (context->*fn)(std::forward<Args>(args)...); });
         }
 
-        template <typename FreeFun>
-            requires(std::is_pointer_v<FreeFun> && std::is_same_v<typename xalt::fn_sign<FreeFun>::class_type, void>)
-        void set(std::string_view name, FreeFun fun)
+        template <typename Return, typename... Args>
+        void set(std::string_view name, Return (*fn)(Args...))
         {
-            constexpr auto wrap //
-                = []<typename... Args>(FreeFun f, xalt::tlist_types<Args...>)
-            { return [f](Args... args) { return f(args...); }; };
-            set(name, wrap(fun, typename xalt::fn_sign<FreeFun>::arg_types()));
+            set(name, [fn](Args... args) { return fn(std::forward<Args>(args)...); });
         }
 
         void gc()
@@ -101,13 +118,9 @@ namespace nil::xlua
             return lua_gettop(state);
         }
 
-        template <typename T>
-        void add_type(std::string_view name)
+        template <is_user_type T>
+        void add_type()
         {
-            if constexpr (requires() { typename Type<T>::Constructors; })
-            {
-                lua_register(state, name.data(), &UserType<T>::type_constructors);
-            }
             luaL_newmetatable(state, xalt::str_name_type_v<T>);
             lua_pushcfunction(state, &UserType<T>::type_close);
             lua_setfield(state, -2, "__close");
@@ -116,7 +129,7 @@ namespace nil::xlua
                 lua_pushcfunction(state, &UserType<T>::type_call);
                 lua_setfield(state, -2, "__call");
             }
-            if constexpr (requires() { typename Type<T>::Members; })
+            if constexpr (requires() { typename Meta<T>::Members; })
             {
                 lua_pushcfunction(state, &UserType<T>::type_index);
                 lua_setfield(state, -2, "__index");
@@ -131,7 +144,15 @@ namespace nil::xlua
             //  -  __gc (?)
         }
 
+        template <is_user_type T>
+            requires requires() { typename Meta<T>::Constructors; }
+        void add_type(std::string_view name)
+        {
+            lua_register(state, name.data(), &UserType<T>::type_constructors);
+            add_type<T>();
+        }
+
     private:
-        lua_State* state;
+        lua_State* state = luaL_newstate();
     };
 }

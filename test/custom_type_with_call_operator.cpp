@@ -1,7 +1,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include <nil/xlua.hpp>
+#include <nil/luax.hpp>
 
 struct CustomTypeWithCallOperator
 {
@@ -14,15 +14,15 @@ struct CustomTypeWithCallOperator
 };
 
 template <>
-struct nil::xlua::Type<CustomTypeWithCallOperator>
+struct nil::luax::Meta<CustomTypeWithCallOperator>
 {
 };
 
-TEST(xlua, custom_type_with_call_operator)
+TEST(luax, custom_type_with_call_operator)
 {
-    auto state = nil::xlua::State();
+    auto state = nil::luax::State();
 
-    state.add_type<CustomTypeWithCallOperator>("CustomTypeWithCallOperator");
+    state.add_type<CustomTypeWithCallOperator>();
     state.run(R"(
         function call(custom_value)
             return custom_value()

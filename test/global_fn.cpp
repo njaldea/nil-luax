@@ -1,15 +1,15 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include <nil/xlua.hpp>
+#include <nil/luax.hpp>
 
-TEST(xlua, global_fn_args)
+TEST(luax, global_fn_args)
 {
     testing::StrictMock<testing::MockFunction<void(bool, double, int, std::string)>> mock_call;
     testing::InSequence seq;
 
     {
-        auto state = nil::xlua::State();
+        auto state = nil::luax::State();
         state.set(
             "call",
             std::function<void(bool, double, int, const std::string&)>(
@@ -34,7 +34,7 @@ TEST(xlua, global_fn_args)
         fn(false, 2.2, 4, "world hello");
     }
     {
-        auto state = nil::xlua::State();
+        auto state = nil::luax::State();
         state.set(
             "call",
             [&mock_call](bool b, double d, int i, const std::string& s)
@@ -58,7 +58,7 @@ TEST(xlua, global_fn_args)
     }
 }
 
-TEST(xlua, global_fn_return)
+TEST(luax, global_fn_return)
 {
     testing::StrictMock<testing::MockFunction<bool()>> mock_bool;
     testing::StrictMock<testing::MockFunction<double()>> mock_number;
@@ -67,7 +67,7 @@ TEST(xlua, global_fn_return)
     testing::InSequence seq;
 
     {
-        auto state = nil::xlua::State();
+        auto state = nil::luax::State();
 
         state.set("fn_bool", std::function<bool()>([&]() { return mock_bool.Call(); }));
         state.set("fn_number", std::function<double()>([&]() { return mock_number.Call(); }));
@@ -107,7 +107,7 @@ TEST(xlua, global_fn_return)
     }
 
     {
-        auto state = nil::xlua::State();
+        auto state = nil::luax::State();
 
         state.set("fn_bool", [&]() { return mock_bool.Call(); });
         state.set("fn_number", [&]() { return mock_number.Call(); });

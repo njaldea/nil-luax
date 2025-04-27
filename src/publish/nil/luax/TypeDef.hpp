@@ -3,6 +3,7 @@
 #include "Ref.hpp"
 #include "error.hpp"
 
+#include <nil/xalt/checks.hpp>
 #include <nil/xalt/fn_sign.hpp>
 #include <nil/xalt/str_name.hpp>
 #include <nil/xalt/tlist.hpp>
@@ -25,7 +26,7 @@ extern "C"
  *       - setting globals
  */
 
-namespace nil::xlua
+namespace nil::luax
 {
     template <typename T>
     concept is_value_type                 //
@@ -37,7 +38,13 @@ namespace nil::xlua
         || std::is_same_v<std::string_view, T>;
 
     template <typename T>
-    struct Type;
+    concept is_std_fn = xalt::is_of_template_v<T, std::function>;
+
+    template <typename T>
+    struct Meta;
+
+    template <typename T>
+    concept is_user_type = requires() { Meta<T>(); };
 
     template <typename T>
     struct TypeDef;
@@ -45,22 +52,13 @@ namespace nil::xlua
     template <typename T>
     struct TypeDefCommon final
     {
-        static decltype(auto) pull(const std::shared_ptr<Ref>& ref)
+        static T pull(const std::shared_ptr<Ref>& ref)
         {
-            if constexpr (is_value_type<std::decay_t<T>>)
-            {
-                auto* state = ref->push();
-                auto v = TypeDef<T>::value(state, -1);
-                lua_pop(state, 1);
-                return v;
-            }
-            else
-            {
-                auto* state = ref->push();
-                auto* ptr = static_cast<T*>(lua_touserdata(state, -1));
-                lua_pop(state, 1);
-                return *ptr;
-            }
+            static_assert(is_value_type<std::decay_t<T>>);
+            auto* state = ref->push();
+            auto v = TypeDef<T>::value(state, -1);
+            lua_pop(state, 1);
+            return v;
         }
 
         static decltype(auto) pull_closure(const std::shared_ptr<Ref>& ref)
@@ -350,8 +348,7 @@ namespace nil::xlua
     };
 
     template <typename T>
-        requires(!is_value_type<std::decay_t<T>>)
-        && (!requires() { Type<std::remove_cvref_t<T>>(); })
+        requires(!is_value_type<std::decay_t<T>>) && (!is_user_type<std::remove_cvref_t<T>>)
     struct TypeDef<T> final
     {
         static void push(lua_State* state, T callable)
@@ -368,8 +365,7 @@ namespace nil::xlua
     // starting here are ref types
 
     template <typename T>
-        requires(!is_value_type<std::decay_t<T>>)
-        && (requires() { Type<std::remove_cvref_t<T>>(); })
+        requires(!is_value_type<std::decay_t<T>>) && (is_user_type<std::remove_cvref_t<T>>)
     struct TypeDef<T> final
     {
         using raw_type = std::remove_cvref_t<T>;
@@ -379,7 +375,7 @@ namespace nil::xlua
             return luaL_testudata(state, index, xalt::str_name_type_v<raw_type>) != nullptr;
         }
 
-        static T value(lua_State* state, int index)
+        static raw_type& value(lua_State* state, int index)
         {
             auto* data = static_cast<raw_type*>(
                 luaL_testudata(state, index, xalt::str_name_type_v<raw_type>)
@@ -393,9 +389,9 @@ namespace nil::xlua
 
         static void push(lua_State* state, T value)
         {
+            static_assert(!std::is_const_v<std::remove_reference_t<T>>);
             if constexpr (std::is_reference_v<T>)
             {
-                static_assert(!std::is_const_v<std::remove_reference_t<T>>);
                 lua_pushlightuserdata(state, &value);
             }
             else
@@ -409,7 +405,10 @@ namespace nil::xlua
 
         static auto& pull(const std::shared_ptr<Ref>& ref)
         {
-            return TypeDefCommon<raw_type>::pull(ref);
+            auto* state = ref->push();
+            auto* ptr = static_cast<raw_type*>(lua_touserdata(state, -1));
+            lua_pop(state, 1);
+            return *ptr;
         }
     };
 }

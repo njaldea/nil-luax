@@ -1,7 +1,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include <nil/xlua.hpp>
+#include <nil/luax.hpp>
 
 struct CustomTypeWithMethod
 {
@@ -14,16 +14,16 @@ struct CustomTypeWithMethod
 };
 
 template <>
-struct nil::xlua::Type<CustomTypeWithMethod>
+struct nil::luax::Meta<CustomTypeWithMethod>
 {
-    using Members = nil::xlua::List<nil::xlua::Method<"call", &CustomTypeWithMethod::call>>;
+    using Members = nil::luax::List<nil::luax::Method<"call", &CustomTypeWithMethod::call>>;
 };
 
-TEST(xlua, custom_type_with_methods)
+TEST(luax, custom_type_with_methods)
 {
-    auto state = nil::xlua::State();
+    auto state = nil::luax::State();
 
-    state.add_type<CustomTypeWithMethod>("CustomTypeWithMethod");
+    state.add_type<CustomTypeWithMethod>();
     state.run(R"(
         function call(custom_value)
             return custom_value:call()

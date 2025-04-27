@@ -1,11 +1,11 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include <nil/xlua.hpp>
+#include <nil/luax.hpp>
 
-TEST(xlua, global_variable)
+TEST(luax, global_variable)
 {
-    auto state = nil::xlua::State();
+    auto state = nil::luax::State();
 
     state.set("v_boolean", true);
     state.set("v_number", 1.1);

@@ -1,18 +1,17 @@
 #include <nil/clix.hpp>
 #include <nil/clix/options.hpp>
 
-#include <nil/xalt/checks.hpp>
+#include <nil/luax.hpp>
 #include <nil/xalt/literal.hpp>
 #include <nil/xalt/noisy_type.hpp>
 #include <nil/xalt/str_name.hpp>
 #include <nil/xalt/tlist.hpp>
-#include <nil/xlua.hpp>
 
 #include <iostream>
 
 int run_from_file(std::string_view path)
 {
-    auto state = nil::xlua::State();
+    auto state = nil::luax::State();
 
     state.load(path);
 
@@ -36,25 +35,25 @@ struct Person
 };
 
 template <>
-struct nil::xlua::Type<Person>
+struct nil::luax::Meta<Person>
 {
-    using Constructors = nil::xlua::List<                                  //
-        nil::xlua::Constructor<>,                                          //
-        nil::xlua::Constructor<std::string, int, std::string, std::string> //
+    using Constructors = nil::luax::List<                                  //
+        nil::luax::Constructor<>,                                          //
+        nil::luax::Constructor<std::string, int, std::string, std::string> //
         >;
 
-    using Members = nil::xlua::List<                //
-        nil::xlua::Property<"name", &Person::name>, //
-        nil::xlua::Property<"age", &Person::age>,   //
-        nil::xlua::Property<"job", &Person::job>,   //
-        nil::xlua::Property<"city", &Person::city>, //
-        nil::xlua::Method<"do_it", &Person::do_it>  //
+    using Members = nil::luax::List<                //
+        nil::luax::Property<"name", &Person::name>, //
+        nil::luax::Property<"age", &Person::age>,   //
+        nil::luax::Property<"job", &Person::job>,   //
+        nil::luax::Property<"city", &Person::city>, //
+        nil::luax::Method<"do_it", &Person::do_it>  //
         >;
 };
 
 int run_string()
 {
-    auto state = nil::xlua::State();
+    auto state = nil::luax::State();
     state.add_type<Person>("Person");
 
     state.run(R"(
@@ -79,8 +78,10 @@ int run_string()
             -- Iterate through the table
             print("-----")
             for key, value in pairs(person) do
-                print(key .. ": " .. tostring(value))
+                print(key, ": " .. tostring(value))
             end
+            print("-----")
+            print(person)
             print("-----")
 
             -- person:do_it()
@@ -88,7 +89,7 @@ int run_string()
         end
     )");
 
-    auto call = state.get("call_2").as<nil::xlua::Var()>();
+    auto call = state.get("call_2").as<nil::luax::Var()>();
 
     struct HelloWorld
     {

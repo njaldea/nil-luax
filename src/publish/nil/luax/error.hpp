@@ -7,7 +7,7 @@ extern "C"
 
 #include <stdexcept>
 
-namespace nil::xlua
+namespace nil::luax
 {
     inline void throw_error(lua_State* state)
     {

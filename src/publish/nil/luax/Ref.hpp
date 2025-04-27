@@ -5,7 +5,7 @@ extern "C"
 #include <lauxlib.h>
 }
 
-namespace nil::xlua
+namespace nil::luax
 {
     class Ref
     {
