@@ -15,6 +15,7 @@ extern "C"
 
 #include <functional>
 #include <memory>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 
@@ -87,26 +88,36 @@ namespace nil::luax
 
             constexpr auto closure_maker //
                 = []<typename... Args, std::size_t... I>(
-                      xalt::tlist_types<Args...> /* arg types */,
+                      xalt::tlist<Args...> /* arg types */,
                       std::index_sequence<I...> /* arg indices */
                   )
             {
-                return [](lua_State* s)
+                return [](lua_State* s) -> int
                 {
                     auto* user_data = static_cast<T*>(lua_touserdata(s, lua_upvalueindex(1)));
+
                     using return_type = typename xalt::fn_sign<T>::return_type;
-                    if constexpr (!std::is_same_v<void, return_type>)
+                    if constexpr (std::is_same_v<void, return_type>)
+                    {
+                        (*user_data)(TypeDef<Args>::value(s, I + 1)...);
+                        return 0;
+                    }
+                    else if constexpr (nil::xalt::is_of_template_v<return_type, std::tuple>)
+                    {
+                        std::apply(
+                            [&]<typename... R>(R&&... r)
+                            { (TypeDef<std::remove_cvref_t<R>>::push(s, std::move(r)), ...); },
+                            (*user_data)(TypeDef<Args>::value(s, I + 1)...)
+                        );
+                        return std::tuple_size_v<return_type>;
+                    }
+                    else
                     {
                         TypeDef<return_type>::push(
                             s,
                             (*user_data)(TypeDef<Args>::value(s, I + 1)...)
                         );
                         return 1;
-                    }
-                    else
-                    {
-                        (*user_data)(TypeDef<Args>::value(s, I + 1)...);
-                        return 0;
                     }
                 };
             };
@@ -246,37 +257,10 @@ namespace nil::luax
         }
     };
 
-    template <typename T>
-        requires(is_value_type<std::decay_t<T>>)
-    struct TypeDef<T&> final
-    {
-        using raw_type = std::remove_cvref_t<T>;
-
-        static bool check(lua_State* state, int index)
-        {
-            return TypeDef<raw_type>::check(state, index);
-        }
-
-        static decltype(auto) value(lua_State* state, int index)
-        {
-            return TypeDef<raw_type>::value(state, index);
-        }
-
-        static void push(lua_State* state, const raw_type& value)
-        {
-            TypeDef<raw_type>::push(state, value);
-        }
-
-        static decltype(auto) pull(const std::shared_ptr<Ref>& ref)
-        {
-            return TypeDef<raw_type>::pull(ref);
-        }
-    };
-
     // starting here are callable
 
     template <typename R, typename... Args>
-    struct TypeDef<std::function<R(Args...)>> final
+    struct TypeDef<std::function<R(Args...)>>
     {
         static bool check(lua_State* state, int index)
         {
@@ -289,7 +273,9 @@ namespace nil::luax
             {
                 throw_error(state);
             }
-            return lua_toboolean(state, index) > 0;
+            lua_pushvalue(state, index);
+            auto ref = std::make_shared<Ref>(state);
+            return pull(ref);
         }
 
         static auto pull(const std::shared_ptr<Ref>& ref)
@@ -312,15 +298,39 @@ namespace nil::luax
 
                     (TypeDef<Args>::push(state, static_cast<Args>(args)), ...);
 
-                    constexpr auto return_size = std::is_same_v<R, void> ? 0 : 1;
-                    if (lua_pcall(state, sizeof...(Args), return_size, 0) != LUA_OK)
+                    if constexpr (std::is_same_v<R, void>)
                     {
-                        throw_error(state);
+                        if (lua_pcall(state, sizeof...(Args), 0, 0) != LUA_OK)
+                        {
+                            throw_error(state);
+                        }
                     }
-
-                    static_assert(!std::is_reference_v<R>);
-                    if constexpr (!std::is_same_v<void, R> && !std::is_reference_v<R>)
+                    else if constexpr (nil::xalt::is_of_template_v<R, std::tuple>)
                     {
+                        if (lua_pcall(state, sizeof...(Args), std::tuple_size_v<R>, 0) != LUA_OK)
+                        {
+                            throw_error(state);
+                        }
+                        R return_value;
+                        constexpr std::size_t N = std::tuple_size_v<R>;
+                        [&]<std::size_t... I>(std::index_sequence<I...>)
+                        {
+                            ((std::get<I>(return_value)
+                              = TypeDef<std::remove_cvref_t<std::tuple_element_t<I, R>>>::value(
+                                  state,
+                                  -int(N - I)
+                              )),
+                             ...);
+                        }(std::make_index_sequence<N>{});
+                        lua_pop(state, int(N));
+                        return return_value;
+                    }
+                    else
+                    {
+                        if (lua_pcall(state, sizeof...(Args), 1, 0) != LUA_OK)
+                        {
+                            throw_error(state);
+                        }
                         auto value = TypeDef<R>::value(state, -1);
                         lua_pop(state, 1);
                         return value;
@@ -348,7 +358,7 @@ namespace nil::luax
     };
 
     template <typename T>
-        requires(!is_value_type<std::decay_t<T>>) && (!is_user_type<std::remove_cvref_t<T>>)
+        requires(!is_value_type<std::remove_cvref_t<T>>) && (!is_user_type<std::remove_cvref_t<T>>)
     struct TypeDef<T> final
     {
         static void push(lua_State* state, T callable)
@@ -372,14 +382,13 @@ namespace nil::luax
 
         static bool check(lua_State* state, int index)
         {
-            return luaL_testudata(state, index, xalt::str_name_type_v<raw_type>) != nullptr;
+            return luaL_testudata(state, index, xalt::str_name_v<raw_type>) != nullptr;
         }
 
         static raw_type& value(lua_State* state, int index)
         {
-            auto* data = static_cast<raw_type*>(
-                luaL_testudata(state, index, xalt::str_name_type_v<raw_type>)
-            );
+            auto* data
+                = static_cast<raw_type*>(luaL_testudata(state, index, xalt::str_name_v<raw_type>));
             if (data == nullptr)
             {
                 throw_error(state);
@@ -399,7 +408,7 @@ namespace nil::luax
                 auto* data = static_cast<raw_type*>(lua_newuserdata(state, sizeof(raw_type)));
                 new (data) raw_type(std::move(value));
             }
-            luaL_getmetatable(state, xalt::str_name_type_v<raw_type>);
+            luaL_getmetatable(state, xalt::str_name_v<raw_type>);
             lua_setmetatable(state, -2);
         }
 
@@ -409,6 +418,35 @@ namespace nil::luax
             auto* ptr = static_cast<raw_type*>(lua_touserdata(state, -1));
             lua_pop(state, 1);
             return *ptr;
+        }
+    };
+
+    // ref support
+
+    template <typename T>
+        requires(is_value_type<std::remove_cvref_t<T>> || xalt::is_of_template_v<std::remove_cvref_t<T>, std::function>)
+    struct TypeDef<T&> final
+    {
+        using raw_type = std::remove_cvref_t<T>;
+
+        static bool check(lua_State* state, int index)
+        {
+            return TypeDef<raw_type>::check(state, index);
+        }
+
+        static decltype(auto) value(lua_State* state, int index)
+        {
+            return TypeDef<raw_type>::value(state, index);
+        }
+
+        static void push(lua_State* state, const raw_type& value)
+        {
+            TypeDef<raw_type>::push(state, value);
+        }
+
+        static decltype(auto) pull(const std::shared_ptr<Ref>& ref)
+        {
+            return TypeDef<raw_type>::pull(ref);
         }
     };
 }

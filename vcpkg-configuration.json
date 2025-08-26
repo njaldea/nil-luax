@@ -9,8 +9,8 @@
         {
             "kind": "git",
             "repository": "https://github.com/njaldea/nil-vcpkg-ports",
-            "baseline": "bfaa20b9bc2f4ee804a767beb752e99ec5294b69",
-            "packages": ["nil-clix", "nil-xalt"]
+            "baseline": "aeb51181aa6153cb3abe6f1c1798e74f6fe9a8c0",
+            "packages": ["nil-clix", "nil-xalt", "nil-gate"]
         }
     ]
 }

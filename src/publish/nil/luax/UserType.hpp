@@ -55,10 +55,10 @@ namespace nil::luax
 
         static int type_index(lua_State* state)
         {
-            T* data = static_cast<T*>(luaL_testudata(state, 1, xalt::str_name_type_v<T>));
+            T* data = static_cast<T*>(luaL_testudata(state, 1, xalt::str_name_v<T>));
             if (data == nullptr)
             {
-                luaL_error(state, "[%s] is of different type", xalt::str_name_type_v<T>);
+                luaL_error(state, "[%s] is of different type", xalt::str_name_v<T>);
             }
             const char* key = luaL_checkstring(state, 2);
             type_get_members(state, typename Meta<T>::Members(), data, key, hash_fnv1a(key));
@@ -67,10 +67,10 @@ namespace nil::luax
 
         static int type_newindex(lua_State* state)
         {
-            T* data = static_cast<T*>(luaL_testudata(state, 1, xalt::str_name_type_v<T>));
+            T* data = static_cast<T*>(luaL_testudata(state, 1, xalt::str_name_v<T>));
             if (data == nullptr)
             {
-                luaL_error(state, "[%s] is of different type", xalt::str_name_type_v<T>);
+                luaL_error(state, "[%s] is of different type", xalt::str_name_v<T>);
             }
             const char* key = luaL_checkstring(state, 2);
             type_set_members(state, typename Meta<T>::Members(), data, key, hash_fnv1a(key));
@@ -88,7 +88,7 @@ namespace nil::luax
                 state,
                 [](lua_State* ss)
                 {
-                    T* data = static_cast<T*>(luaL_testudata(ss, 1, xalt::str_name_type_v<T>));
+                    T* data = static_cast<T*>(luaL_testudata(ss, 1, xalt::str_name_v<T>));
                     if (lua_isnil(ss, 2))
                     {
                         return type_pairs_iter(ss, typename Meta<T>::Members(), data, nullptr);
@@ -97,8 +97,8 @@ namespace nil::luax
                     return type_pairs_iter(ss, typename Meta<T>::Members(), data, &hash);
                 }
             );
-            lua_pushlightuserdata(state, luaL_testudata(state, 1, xalt::str_name_type_v<T>));
-            luaL_getmetatable(state, xalt::str_name_type_v<T>);
+            lua_pushlightuserdata(state, luaL_testudata(state, 1, xalt::str_name_v<T>));
+            luaL_getmetatable(state, xalt::str_name_v<T>);
             lua_setmetatable(state, -2);
             lua_pushnil(state);
             return 3;
@@ -118,7 +118,7 @@ namespace nil::luax
                 {
                     T* data = static_cast<T*>(lua_newuserdata(ss, sizeof(T)));
                     new (data) T(TypeDef<CType>::value(ss, I + 1)...);
-                    luaL_getmetatable(ss, xalt::str_name_type_v<T>);
+                    luaL_getmetatable(ss, xalt::str_name_v<T>);
                     lua_setmetatable(ss, -2);
                     return false;
                 }
@@ -129,7 +129,7 @@ namespace nil::luax
             {
                 if constexpr (sizeof...(TRest) == 0)
                 {
-                    luaL_error(state, "[%s] can't be constructed with the provided arguments", xalt::str_name_type_v<T>);
+                    luaL_error(state, "[%s] can't be constructed with the provided arguments", xalt::str_name_v<T>);
                 }
                 else
                 {
@@ -147,7 +147,7 @@ namespace nil::luax
             constexpr auto fn          //
                 = []<typename... Args, //
                      std::size_t... I> //
-                (lua_State * ss, xalt::tlist_types<Args...>, std::index_sequence<I...>)
+                (lua_State * ss, xalt::tlist<Args...>, std::index_sequence<I...>)
             {
                 T* data = static_cast<T*>(lua_touserdata(ss, 1));
                 using R = typename fn_sign::return_type;
@@ -213,7 +213,7 @@ namespace nil::luax
         template <xalt::literal l, auto p>
         static void type_set_member(lua_State* state, Method<l, p> /* member */, T* /* data */)
         {
-            luaL_error(state, "[%s] member functions are not be replaceable", xalt::str_name_type_v<T>);
+            luaL_error(state, "[%s] member functions are not be replaceable", xalt::str_name_v<T>);
         }
 
         template <xalt::literal l, auto p>
@@ -261,14 +261,15 @@ namespace nil::luax
             {
                 return type_pairs_iter(state, List<Rest...>(), data, nullptr);
             }
-            if constexpr (sizeof...(Rest) == 0)
-            {
-                return 0;
-            }
-            else
-            {
-                return type_pairs_iter(state, List<Rest...>(), data, key_hash);
-            }
+            return type_pairs_iter(state, List<Rest...>(), data, key_hash);
+        }
+
+        static void type_constructor(
+            lua_State* state,
+            List<> /* constructors */
+        )
+        {
+            luaL_error(state, "[%s] can't be constructed with the provided arguments", xalt::str_name_v<T>);
         }
 
         static void type_get_members(
@@ -279,7 +280,7 @@ namespace nil::luax
             std::uint32_t /* key_hash */
         )
         {
-            luaL_error(state, "[%s] member [%s] is unknown", xalt::str_name_type_v<T>, key);
+            luaL_error(state, "[%s] member [%s] is unknown", xalt::str_name_v<T>, key);
         }
 
         static void type_set_members(
@@ -290,7 +291,7 @@ namespace nil::luax
             std::uint32_t /* key_hash */
         )
         {
-            luaL_error(state, "[%s] member [%s] is unknown", xalt::str_name_type_v<T>, key);
+            luaL_error(state, "[%s] member [%s] is unknown", xalt::str_name_v<T>, key);
         }
 
         static int type_pairs_iter(
@@ -317,8 +318,8 @@ namespace nil::luax
 
         static constexpr auto hash_fnv1a(
             std::string_view literal,                 // NOLINT
-            std::uint32_t offset_basis = 2166136261u, // NOLINT
-            std::uint32_t prime = 16777619u           // NOLINT
+            std::uint32_t offset_basis = 0x811C9DC5u, // NOLINT
+            std::uint32_t prime = 0x01000193          // NOLINT
         ) -> std::uint32_t
         {
             std::uint32_t hash = offset_basis;

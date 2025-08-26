@@ -48,15 +48,14 @@ namespace nil::luax
 
     private:
         std::shared_ptr<Ref> ref;
+
+        friend TypeDef<Var>;
     };
 
     template <>
     struct TypeDef<Var>
     {
-        static bool check(lua_State* state, int index)
-        {
-            return luaL_checkudata(state, index, xalt::str_name_type_v<Var>) != nullptr;
-        }
+        static bool check(lua_State* state, int index) = delete;
 
         static Var value(lua_State* state, int index)
         {
@@ -64,18 +63,41 @@ namespace nil::luax
             return Var(std::make_shared<Ref>(state));
         }
 
-        static void push(lua_State* state, Var callable)
+        static void push(lua_State* /* state */, const Var& v)
         {
-            auto* data = static_cast<Var*>(lua_newuserdata(state, sizeof(Var)));
-            new (data) Var(std::move(callable));
+            v.ref->push();
         }
 
-        static auto& pull(const std::shared_ptr<Ref>& ref)
+        static Var pull(const std::shared_ptr<Ref>& ref)
         {
-            auto* state = ref->push();
-            auto* ptr = static_cast<Var*>(lua_touserdata(state, -1));
-            lua_pop(state, 1);
-            return *ptr;
+            return Var(ref);
+        }
+    };
+
+    template <typename T>
+        requires(std::is_same_v<std::remove_cvref_t<T>, Var>)
+    struct TypeDef<T&>
+    {
+        using raw_type = std::remove_cvref_t<T>;
+
+        static bool check(lua_State* state, int index)
+        {
+            return TypeDef<raw_type>::check(state, index);
+        }
+
+        static decltype(auto) value(lua_State* state, int index)
+        {
+            return TypeDef<raw_type>::value(state, index);
+        }
+
+        static void push(lua_State* state, const raw_type& value)
+        {
+            TypeDef<raw_type>::push(state, value);
+        }
+
+        static decltype(auto) pull(const std::shared_ptr<Ref>& ref)
+        {
+            return TypeDef<raw_type>::pull(ref);
         }
     };
 }

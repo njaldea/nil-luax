@@ -121,7 +121,7 @@ namespace nil::luax
         template <is_user_type T>
         void add_type()
         {
-            luaL_newmetatable(state, xalt::str_name_type_v<T>);
+            luaL_newmetatable(state, xalt::str_name_v<T>);
             lua_pushcfunction(state, &UserType<T>::type_close);
             lua_setfield(state, -2, "__close");
             if constexpr (requires() { &T::operator(); })
